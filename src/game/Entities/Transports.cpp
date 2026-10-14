@@ -497,8 +497,12 @@ void GenericTransport::UpdatePosition(float x, float y, float z, float o)
 
 void GenericTransport::UpdatePassengerPositions(PassengerSet& passengers)
 {
-    for (const auto passenger : passengers)
-        UpdatePassengerPosition(passenger);
+    // Relocating a passenger runs visibility/AI code that can remove passengers
+    // from this set; walk a snapshot and skip anyone removed mid-walk.
+    PassengerSet const snapshot(passengers);
+    for (WorldObject* passenger : snapshot)
+        if (passengers.find(passenger) != passengers.end())
+            UpdatePassengerPosition(passenger);
 }
 
 void GenericTransport::UpdatePassengerPosition(WorldObject* passenger)
