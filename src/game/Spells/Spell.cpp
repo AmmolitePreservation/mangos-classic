@@ -2019,6 +2019,9 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
             SpellCastResult result = SPELL_CAST_OK;
             for (uint32 i = 0; i < 10; ++i)
             {
+                // Each attempt stands on its own: a failed earlier attempt must
+                // not doom a later one that lands in fishable water.
+                result = SPELL_CAST_OK;
                 float dis = rand_norm_f() * (max_dis - min_dis) + min_dis;
                 // calculate angle variation for roughly equal dimensions of target area
                 float max_angle = (max_dis - min_dis) / (max_dis + m_caster->GetObjectBoundingRadius());
@@ -2039,6 +2042,9 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                     result = SPELL_FAILED_LINE_OF_SIGHT;
                     continue;
                 }
+
+                // Fishable and in line of sight: keep this point for the bobber.
+                break;
             }
 
             uint32 mapId = m_caster->GetMapId();
