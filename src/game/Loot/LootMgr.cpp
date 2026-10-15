@@ -32,6 +32,7 @@
 #include "BattleGround/BattleGroundMgr.h"
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 INSTANTIATE_SINGLETON_1(LootMgr);
 
@@ -1833,9 +1834,12 @@ Loot::Loot(Player* player, GameObject* gameObject, LootType type) :
 
                 uint32 zone, subzone;
                 gameObject->GetZoneAndAreaId(zone, subzone);
-                // if subzone loot exist use it
-                if (!FillLoot(subzone, LootTemplates_Fishing, player, true, (subzone != zone)) && subzone != zone)
-                    // else use zone loot (if zone diff. from subzone, must exist in like case)
+                FillLoot(subzone, LootTemplates_Fishing, player, true, (subzone != zone));
+                // An area's template may hold only extras on top of its zone's catch (a quest fish, a seasonal squid),
+                // so a cast that rolled nothing but quest items there also rolls the zone's template.
+                bool const hasNormalCatch = std::any_of(m_lootItems.begin(), m_lootItems.end(),
+                    [](LootItem const* lootItem) { return lootItem->lootItemType != LOOTITEM_TYPE_QUEST; });
+                if (subzone != zone && !hasNormalCatch)
                     FillLoot(zone, LootTemplates_Fishing, player, true);
                 break;
             }
