@@ -2064,6 +2064,8 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                         case 40: // westfall
                         case 85: // tirisfal
                         case 130: // silverpine
+                        case 1497: // undercity
+                        case 1537: // ironforge
                             minimumRequiredSkill = 0;
                             break;
                         case 10: // duskwood
@@ -2073,7 +2075,9 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                         case 1519: // stormwind
                             minimumRequiredSkill = 55;
                             break;
+                        case 8: // swamp of sorrows
                         case 33: // stranglethorn
+                        case 36: // alterac mountains
                         case 45: // arathi
                             minimumRequiredSkill = 130;
                             break;
@@ -2082,6 +2086,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                             minimumRequiredSkill = 205;
                             break;
                         case 41: // deadwind
+                        case 46: // burning steppes
                         case 139: // eastern plaguelands
                             minimumRequiredSkill = 330;
                             break;
@@ -2094,6 +2099,9 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                         case 17: // barrens
                         case 141: // teldrassil
                         case 148: // darkshore
+                        case 215: // mulgore
+                        case 1637: // orgrimmar
+                        case 1638: // thunder bluff
                         case 1657: // darnassus
                             minimumRequiredSkill = 0;
                             break;
@@ -2102,6 +2110,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                             minimumRequiredSkill = 55;
                             break;
                         case 15: // dustwallow
+                        case 400: // thousand needles
                         case 405: // desolace
                             minimumRequiredSkill = 130;
                             break;
@@ -2116,19 +2125,27 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                                     break;
                             }
                             break;
+                        case 361: // felwood
                         case 440: // tanaris
+                        case 490: // un'goro
+                        case 493: // moonglade
                             minimumRequiredSkill = 205;
                             break;
                         case 16: // azshara
                         case 618: // winterspring
+                        case 1377: // silithus
                             minimumRequiredSkill = 330;
                             break;
                     }
+                    break;
+                case 36: // deadmines
+                    minimumRequiredSkill = 0;
                     break;
                 case 43: // wailing caverns
                 case 48: // blackfathom
                     minimumRequiredSkill = 55;
                     break;
+                case 109: // sunken temple
                 case 189: // scarlet monastery
                 case 349: // maraudon
                     minimumRequiredSkill = 205;
