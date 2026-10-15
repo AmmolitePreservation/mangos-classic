@@ -28,7 +28,7 @@ if(BUILD_PLAYERBOTS)
   FetchContent_Declare(
     PlayerBots
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/PlayerBots"
-    GIT_REPOSITORY "https://github.com/rbraunm/playerbots.git"
+    GIT_REPOSITORY "https://github.com/AmmolitePreservation/playerbots.git"
     GIT_TAG "arcanite"
     # arcanite is rebased onto upstream and force-pushed; a rebase update would replay its old commits onto the new ones
     GIT_REMOTE_UPDATE_STRATEGY CHECKOUT
