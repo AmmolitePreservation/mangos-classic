@@ -2143,6 +2143,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                     break;
                 case 43: // wailing caverns
                 case 48: // blackfathom
+                case 529: // arathi basin
                     minimumRequiredSkill = 55;
                     break;
                 case 109: // sunken temple
@@ -2150,6 +2151,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, bool targ
                 case 349: // maraudon
                     minimumRequiredSkill = 205;
                     break;
+                case 30: // alterac valley
                 case 289: // scholomance
                 case 309: // zulgurub
                 case 329: // stratholme
