@@ -25,13 +25,13 @@ endif()
 if(BUILD_PLAYERBOTS)
   include(FetchContent)
 
+  set(PLAYERBOTS_GIT_TAG "main" CACHE STRING "Branch of AmmolitePreservation/playerbots to build: main, or claude on a server deploying changes not yet merged")
+
   FetchContent_Declare(
     PlayerBots
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/PlayerBots"
     GIT_REPOSITORY "https://github.com/AmmolitePreservation/playerbots.git"
-    GIT_TAG "arcanite"
-    # arcanite is rebased onto upstream and force-pushed; a rebase update would replay its old commits onto the new ones
-    GIT_REMOTE_UPDATE_STRATEGY CHECKOUT
+    GIT_TAG "${PLAYERBOTS_GIT_TAG}"
   )
 
   FetchContent_GetProperties(PlayerBots)
