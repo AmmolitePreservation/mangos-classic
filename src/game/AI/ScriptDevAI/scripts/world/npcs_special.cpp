@@ -183,7 +183,6 @@ struct npc_doctorAI : public ScriptedAI
     ObjectGuid m_playerGuid;
 
     uint32 m_uiSummonPatientTimer;
-    uint32 m_uiSummonPatientCount;
     uint32 m_uiPatientDiedCount;
     uint32 m_uiPatientSavedCount;
 
@@ -197,7 +196,6 @@ struct npc_doctorAI : public ScriptedAI
         m_playerGuid.Clear();
 
         m_uiSummonPatientTimer = 10000;
-        m_uiSummonPatientCount = 0;
         m_uiPatientDiedCount = 0;
         m_uiPatientSavedCount = 0;
 
@@ -352,7 +350,6 @@ void npc_doctorAI::BeginEvent(Player* pPlayer)
     m_playerGuid = pPlayer->GetObjectGuid();
 
     m_uiSummonPatientTimer = 10000;
-    m_uiSummonPatientCount = 0;
     m_uiPatientDiedCount = 0;
     m_uiPatientSavedCount = 0;
 
@@ -434,12 +431,6 @@ void npc_doctorAI::PatientSaved(Creature* /*soldier*/, Player* pPlayer, Position
 
 void npc_doctorAI::UpdateAI(const uint32 uiDiff)
 {
-    if (m_bIsEventInProgress && m_uiSummonPatientCount >= 21)	// worst case scenario : 5 deads + 15 saved
-    {
-        Reset();
-        return;
-    }
-
     if (m_bIsEventInProgress && !m_vPatientSummonCoordinates.empty())
     {
         if (m_uiSummonPatientTimer < uiDiff)
@@ -507,8 +498,6 @@ void npc_doctorAI::UpdateAI(const uint32 uiDiff)
                 m_uiSummonPatientTimer = urand(8000, 9000); //player has someone to heal still
             else
                 m_uiSummonPatientTimer = 10000;
-
-            ++m_uiSummonPatientCount;
         }
         else
             m_uiSummonPatientTimer -= uiDiff;
@@ -519,8 +508,10 @@ bool QuestAccept_npc_doctor(Player* pPlayer, Creature* pCreature, const Quest* p
 {
     if ((pQuest->GetQuestId() == QUEST_TRIAGE_A) || (pQuest->GetQuestId() == QUEST_TRIAGE_H))
     {
+        // A party member or bot accepting from the doctor mid-event must not restart the event or take it over
         if (npc_doctorAI* pDocAI = dynamic_cast<npc_doctorAI*>(pCreature->AI()))
-            pDocAI->BeginEvent(pPlayer);
+            if (!pDocAI->m_bIsEventInProgress)
+                pDocAI->BeginEvent(pPlayer);
     }
 
     return true;
