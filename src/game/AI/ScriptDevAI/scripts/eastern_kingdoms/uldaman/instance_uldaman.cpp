@@ -25,10 +25,10 @@ EndScriptData
 
 #include "AI/ScriptDevAI/include/sc_common.h"
 #include "uldaman.h"
+#include <algorithm>
 
 instance_uldaman::instance_uldaman(Map* pMap) : ScriptedInstance(pMap),
-    m_uiKeeperCooldown(0),
-    m_uiStoneKeepersFallen(0)
+    m_uiKeeperCooldown(0)
 {
     Initialize();
 }
@@ -69,7 +69,9 @@ void instance_uldaman::OnCreatureCreate(Creature* pCreature)
             m_lWardens.push_back(pCreature->GetObjectGuid());
             break;
         case NPC_STONE_KEEPER:
-            m_lKeepers.push_back(pCreature->GetObjectGuid());
+            // A keeper is created again whenever its grid reloads
+            if (std::find(m_lKeepers.begin(), m_lKeepers.end(), pCreature->GetObjectGuid()) == m_lKeepers.end())
+                m_lKeepers.push_back(pCreature->GetObjectGuid());
             break;
         case NPC_ARCHAEDAS:
             m_npcEntryGuidStore[NPC_ARCHAEDAS] = pCreature->GetObjectGuid();
@@ -103,10 +105,7 @@ void instance_uldaman::SetData(uint32 uiType, uint32 uiData)
                 m_uiKeeperCooldown = 5000;
             }
             else if (uiData == NOT_STARTED)
-            {
                 DoResetKeeperEvent();
-                m_uiStoneKeepersFallen = 0;
-            }
             m_auiEncounter[0] = uiData;
             break;
 
@@ -254,9 +253,13 @@ void instance_uldaman::OnCreatureDeath(Creature* pCreature)
 {
     if (pCreature->GetEntry() == NPC_STONE_KEEPER)
     {
-        ++m_uiStoneKeepersFallen;
+        bool const allKeepersDead = std::all_of(m_lKeepers.begin(), m_lKeepers.end(), [this](ObjectGuid const& keeperGuid)
+        {
+            Creature* pKeeper = instance->GetCreature(keeperGuid);
+            return pKeeper && !pKeeper->IsAlive();
+        });
 
-        if (m_lKeepers.size() == m_uiStoneKeepersFallen)
+        if (allKeepersDead)
             SetData(TYPE_ALTAR_EVENT, DONE);
         else
             m_uiKeeperCooldown = 5000;

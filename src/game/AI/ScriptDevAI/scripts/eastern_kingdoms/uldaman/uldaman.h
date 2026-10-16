@@ -73,7 +73,6 @@ class instance_uldaman : public ScriptedInstance
         ObjectGuid m_playerGuid;
 
         uint32 m_uiKeeperCooldown;
-        uint32 m_uiStoneKeepersFallen;
 
         GuidList m_lWardens;
         GuidList m_lKeepers;
