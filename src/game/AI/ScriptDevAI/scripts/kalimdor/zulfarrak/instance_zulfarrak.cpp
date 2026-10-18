@@ -42,7 +42,7 @@ void instance_zulfarrak::Initialize()
 // start lower, after Bly leads them down, are not held.
 static const float PYRAMID_LANDING_FLOOR_Z = 38.0f;
 
-static const uint32 PYRAMID_WAVE_INTERVAL = 15000;
+static const uint32 PYRAMID_WAVE_INTERVAL = 12000;
 static const uint32 PYRAMID_WAVE_MIN_SIZE = 3;
 static const uint32 PYRAMID_WAVE_MAX_SIZE = 5;
 
