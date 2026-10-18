@@ -37,13 +37,36 @@ void instance_zulfarrak::Initialize()
     memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
 }
 
+// Bly's band holds the landing at the top of the pyramid stairs during the waves. A fight that starts on the landing
+// breaks off once it pulls them down the steps, where they would aggro the trolls still waiting below. Fights that
+// start lower, after Bly leads them down, are not held.
+static const float PYRAMID_LANDING_FLOOR_Z = 38.0f;
+
+static void HoldPyramidLanding(Creature* prisoner)
+{
+    prisoner->GetCombatManager().SetLeashingCheck([](Unit* unit, float /*x*/, float /*y*/, float z)
+    {
+        Position const& combatStart = static_cast<Creature*>(unit)->GetCombatStartPosition();
+        return !combatStart.IsEmpty() && combatStart.GetPositionZ() >= PYRAMID_LANDING_FLOOR_Z && z < PYRAMID_LANDING_FLOOR_Z;
+    });
+}
+
 void instance_zulfarrak::OnCreatureCreate(Creature* pCreature)
 {
     switch (pCreature->GetEntry())
     {
         case NPC_ANTUSUL:
+            m_npcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
+            break;
         case NPC_SERGEANT_BLY:
             m_npcEntryGuidStore[pCreature->GetEntry()] = pCreature->GetObjectGuid();
+            HoldPyramidLanding(pCreature);
+            break;
+        case NPC_RAVEN:
+        case NPC_ORO_EYEGOUGE:
+        case NPC_WEEGLI_BLASTFUSE:
+        case NPC_MURTA_GRIMGUT:
+            HoldPyramidLanding(pCreature);
             break;
         case NPC_SANDFURY_SLAVE:
         case NPC_SANDFURY_DRUDGE:

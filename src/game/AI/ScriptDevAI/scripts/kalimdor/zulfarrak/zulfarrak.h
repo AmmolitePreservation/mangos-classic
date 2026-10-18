@@ -29,6 +29,10 @@ enum
     NPC_CHIEF_SANDSCALP             = 7267,
 
     NPC_SERGEANT_BLY                = 7604,
+    NPC_RAVEN                       = 7605,
+    NPC_ORO_EYEGOUGE                = 7606,
+    NPC_WEEGLI_BLASTFUSE            = 7607,
+    NPC_MURTA_GRIMGUT               = 7608,
     NPC_SANDFURY_SLAVE              = 7787,
     NPC_SANDFURY_DRUDGE             = 7788,
     NPC_SANDFURY_CRETIN             = 7789,
