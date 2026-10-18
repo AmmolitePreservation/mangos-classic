@@ -42,6 +42,10 @@ void instance_zulfarrak::Initialize()
 // start lower, after Bly leads them down, are not held.
 static const float PYRAMID_LANDING_FLOOR_Z = 38.0f;
 
+static const uint32 PYRAMID_WAVE_INTERVAL = 15000;
+static const uint32 PYRAMID_WAVE_MIN_SIZE = 3;
+static const uint32 PYRAMID_WAVE_MAX_SIZE = 5;
+
 static void HoldPyramidLanding(Creature* prisoner)
 {
     prisoner->GetCombatManager().SetLeashingCheck([](Unit* unit, float /*x*/, float /*y*/, float z)
@@ -221,45 +225,38 @@ void instance_zulfarrak::Update(uint32 uiDiff)
     {
         if (m_uiPyramidEventTimer <= uiDiff)
         {
-            if (m_lPyramidTrollsGuidList.empty())
+            m_uiPyramidEventTimer = PYRAMID_WAVE_INTERVAL;
+
+            Creature* pBly = GetSingleCreatureFromStorage(NPC_SERGEANT_BLY);
+            if (!pBly)
+                return;
+
+            // ToDo: research if there is anything special if these guys die
+            if (!pBly->IsAlive())
             {
-                m_uiPyramidEventTimer = urand(3000, 10000);
+                m_uiPyramidEventTimer = 0;
                 return;
             }
 
-            GuidList::iterator iter = m_lPyramidTrollsGuidList.begin();
-            advance(iter, urand(0, m_lPyramidTrollsGuidList.size() - 1));
-
-            // Remove the selected troll
-            ObjectGuid selectedGuid = *iter;
-            m_lPyramidTrollsGuidList.erase(iter);
-
-            // Move the selected troll to the top of the pyramid. Note: the algorythm may be more complicated than this, but for the moment this will do.
-            if (Creature* pTroll = instance->GetCreature(selectedGuid))
+            // Send the next wave of waiting trolls up the pyramid to Bly; trolls already fighting or dead are skipped.
+            uint32 waveSize = urand(PYRAMID_WAVE_MIN_SIZE, PYRAMID_WAVE_MAX_SIZE);
+            while (waveSize && !m_lPyramidTrollsGuidList.empty())
             {
-                // Pick another one if already in combat or already killed
-                if (pTroll->GetVictim() || !pTroll->IsAlive())
-                {
-                    m_uiPyramidEventTimer = urand(0, 2) ? urand(3000, 10000) : 1000;
-                    return;
-                }
+                GuidList::iterator iter = m_lPyramidTrollsGuidList.begin();
+                advance(iter, urand(0, m_lPyramidTrollsGuidList.size() - 1));
+                ObjectGuid selectedGuid = *iter;
+                m_lPyramidTrollsGuidList.erase(iter);
+
+                Creature* pTroll = instance->GetCreature(selectedGuid);
+                if (!pTroll || pTroll->GetVictim() || !pTroll->IsAlive())
+                    continue;
 
                 float fX, fY, fZ;
-                if (Creature* pBly = GetSingleCreatureFromStorage(NPC_SERGEANT_BLY))
-                {
-                    // ToDo: research if there is anything special if these guys die
-                    if (!pBly->IsAlive())
-                    {
-                        m_uiPyramidEventTimer = 0;
-                        return;
-                    }
-
-                    pBly->GetRandomPoint(pBly->GetPositionX(), pBly->GetPositionY(), pBly->GetPositionZ(), 4.0f, fX, fY, fZ);
-                    pTroll->SetWalk(false);
-                    pTroll->GetMotionMaster()->MovePoint(0, fX, fY, fZ);
-                }
+                pBly->GetRandomPoint(pBly->GetPositionX(), pBly->GetPositionY(), pBly->GetPositionZ(), 4.0f, fX, fY, fZ);
+                pTroll->SetWalk(false);
+                pTroll->GetMotionMaster()->MovePoint(0, fX, fY, fZ);
+                --waveSize;
             }
-            m_uiPyramidEventTimer = urand(0, 2) ? urand(3000, 10000) : 1000;
         }
         else
             m_uiPyramidEventTimer -= uiDiff;
