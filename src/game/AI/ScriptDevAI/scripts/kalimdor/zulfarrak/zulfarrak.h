@@ -81,6 +81,10 @@ class instance_zulfarrak : public ScriptedInstance
         GuidList m_lPyramidTrollsGuidList;
 
         uint32 m_uiPyramidEventTimer;
+        bool m_prisonersHoldLanding;
+
+    private:
+        void HoldPyramidLanding(Creature* prisoner);
 };
 
 #endif

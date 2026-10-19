@@ -27,7 +27,8 @@ EndScriptData
 #include "zulfarrak.h"
 
 instance_zulfarrak::instance_zulfarrak(Map* pMap) : ScriptedInstance(pMap),
-    m_uiPyramidEventTimer(0)
+    m_uiPyramidEventTimer(0),
+    m_prisonersHoldLanding(true)
 {
     Initialize();
 }
@@ -37,21 +38,21 @@ void instance_zulfarrak::Initialize()
     memset(&m_auiEncounter, 0, sizeof(m_auiEncounter));
 }
 
-// Bly's band holds the landing at the top of the pyramid stairs during the waves. A fight that starts on the landing
-// breaks off once it pulls them down the steps, where they would aggro the trolls still waiting below. Fights that
-// start lower, after Bly leads them down, are not held.
 static const float PYRAMID_LANDING_FLOOR_Z = 38.0f;
 
 static const uint32 PYRAMID_WAVE_INTERVAL = 12000;
 static const uint32 PYRAMID_WAVE_MIN_SIZE = 3;
 static const uint32 PYRAMID_WAVE_MAX_SIZE = 5;
 
-static void HoldPyramidLanding(Creature* prisoner)
+// Bly's band holds the landing at the top of the pyramid stairs during the waves: a fight that pulls them down the
+// steps breaks off, since below it they aggro the trolls still waiting at the base. The hold ends when Bly leads them
+// down, which is the script step that also spawns Nekrum and Sezz'ziz.
+void instance_zulfarrak::HoldPyramidLanding(Creature* prisoner)
 {
-    prisoner->GetCombatManager().SetLeashingCheck([](Unit* unit, float /*x*/, float /*y*/, float z)
+    prisoner->GetCombatManager().SetLeashingCheck([this](Unit* unit, float /*x*/, float /*y*/, float z)
     {
         Position const& combatStart = static_cast<Creature*>(unit)->GetCombatStartPosition();
-        return !combatStart.IsEmpty() && combatStart.GetPositionZ() >= PYRAMID_LANDING_FLOOR_Z && z < PYRAMID_LANDING_FLOOR_Z;
+        return m_prisonersHoldLanding && !combatStart.IsEmpty() && combatStart.GetPositionZ() >= PYRAMID_LANDING_FLOOR_Z && z < PYRAMID_LANDING_FLOOR_Z;
     });
 }
 
@@ -72,11 +73,13 @@ void instance_zulfarrak::OnCreatureCreate(Creature* pCreature)
         case NPC_MURTA_GRIMGUT:
             HoldPyramidLanding(pCreature);
             break;
+        case NPC_NEKRUM:
+        case NPC_SEZZZIZ:
+            m_prisonersHoldLanding = false;
+            break;
         case NPC_SANDFURY_SLAVE:
         case NPC_SANDFURY_DRUDGE:
         case NPC_SANDFURY_CRETIN:
-        case NPC_SANDFURY_ACOLYTE:
-        case NPC_SANDFURY_ZEALOT:
             m_lPyramidTrollsGuidList.push_back(pCreature->GetObjectGuid());
             break;
     }
