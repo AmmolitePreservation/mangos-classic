@@ -25,12 +25,12 @@ endif()
 if(BUILD_PLAYERBOTS)
   include(FetchContent)
 
-  set(PLAYERBOTS_GIT_TAG "main" CACHE STRING "Branch of AmmolitePreservation/playerbots to build: main, or claude on a server deploying changes not yet merged")
+  set(PLAYERBOTS_GIT_TAG "main" CACHE STRING "Branch of AmmolitePreservation/cmangos-playerbots to build: main, or claude on a server deploying changes not yet merged")
 
   FetchContent_Declare(
     PlayerBots
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/PlayerBots"
-    GIT_REPOSITORY "https://github.com/AmmolitePreservation/playerbots.git"
+    GIT_REPOSITORY "https://github.com/AmmolitePreservation/cmangos-playerbots.git"
     GIT_TAG "${PLAYERBOTS_GIT_TAG}"
   )
 
