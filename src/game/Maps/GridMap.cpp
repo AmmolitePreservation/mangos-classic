@@ -632,7 +632,7 @@ GridMapLiquidStatus GridMap::getLiquidStatus(float x, float y, float z, uint8 Re
     if (delta > 0)                                          // In water
         return LIQUID_MAP_IN_WATER;
 
-    if (delta > -1)                                         // Walk on water
+    if (delta > -0.1f)                                      // Walk on water
         return LIQUID_MAP_WATER_WALK;
     // Above water
     return LIQUID_MAP_ABOVE_WATER;
@@ -1106,7 +1106,7 @@ GridMapLiquidStatus TerrainInfo::getLiquidStatus(float x, float y, float z, uint
                 return LIQUID_MAP_UNDER_WATER;
             if (delta > 0)                    // In water
                 return LIQUID_MAP_IN_WATER;
-            if (delta > -1)                   // Walk on water
+            if (delta > -0.1f)                // Walk on water
                 return LIQUID_MAP_WATER_WALK;
             result = LIQUID_MAP_ABOVE_WATER;
         }
