@@ -341,6 +341,13 @@ bool AuthSocket::_HandleLogonChallenge()
         if ((remaining < sizeof(sAuthLogonChallengeBody) - AUTH_LOGON_MAX_NAME))
             return;
 
+        if (remaining > sizeof(sAuthLogonChallengeBody))
+        {
+            sLog.outError("[AuthChallenge] Oversized logon challenge body (%u bytes) from %s, closing connection.", remaining, self->GetRemoteAddress().c_str());
+            self->Close();
+            return;
+        }
+
         DEBUG_LOG("[AuthChallenge] got header, body is %#04x bytes", remaining);
 
         ///- Session is closed unless overriden
@@ -721,6 +728,13 @@ bool AuthSocket::_HandleReconnectChallenge()
 
         if ((remaining < sizeof(sAuthLogonChallengeBody) - AUTH_LOGON_MAX_NAME))
             return;
+
+        if (remaining > sizeof(sAuthLogonChallengeBody))
+        {
+            sLog.outError("[ReconnectChallenge] Oversized reconnect challenge body (%u bytes) from %s, closing connection.", remaining, self->GetRemoteAddress().c_str());
+            self->Close();
+            return;
+        }
 
         ///- Session is closed unless overriden
         self->_status = STATUS_CLOSED;
