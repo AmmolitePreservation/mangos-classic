@@ -404,7 +404,8 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
     if (security > SEC_ADMINISTRATOR)                       // prevent invalid security settings in DB
         security = SEC_ADMINISTRATOR;
 
-    K.SetHexStr(fields[2].GetString());
+    // realmd keeps the key of each recent login of the account, newest first
+    Tokens sessionKeys = StrSplit(fields[2].GetCppString(), " ");
 
     time_t mutetime = time_t (fields[7].GetUInt64());
 
@@ -447,19 +448,26 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
     }
 
     // Check that Key and account name are the same on client and server
-    Sha1Hash sha;
-
     uint32 t = 0;
     uint32 seed = m_seed;
+    bool keyFound = false;
 
-    sha.UpdateData(account);
-    sha.UpdateData((uint8*) & t, 4);
-    sha.UpdateData((uint8*) & clientSeed, 4);
-    sha.UpdateData((uint8*) & seed, 4);
-    sha.UpdateBigNumbers(&K, nullptr);
-    sha.Finalize();
+    for (auto itr = sessionKeys.begin(); itr != sessionKeys.end() && !keyFound; ++itr)
+    {
+        K.SetHexStr(itr->c_str());
 
-    if (memcmp(sha.GetDigest(), digest, 20))
+        Sha1Hash sha;
+        sha.UpdateData(account);
+        sha.UpdateData((uint8*) & t, 4);
+        sha.UpdateData((uint8*) & clientSeed, 4);
+        sha.UpdateData((uint8*) & seed, 4);
+        sha.UpdateBigNumbers(&K, nullptr);
+        sha.Finalize();
+
+        keyFound = !memcmp(sha.GetDigest(), digest, 20);
+    }
+
+    if (!keyFound)
     {
         WorldPacket packet(SMSG_AUTH_RESPONSE, 1);
         packet << uint8(AUTH_FAILED);

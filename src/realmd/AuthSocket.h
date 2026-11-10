@@ -87,6 +87,7 @@ class AuthSocket : public MaNGOS::AsyncSocket<AuthSocket>
 
         SRP6 srp;
         BigNumber _reconnectProof;
+        std::string _reconnectKeys;
 
         eStatus _status;
 

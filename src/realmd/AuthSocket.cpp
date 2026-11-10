@@ -31,6 +31,7 @@
 #include "AuthCodes.h"
 #include "Auth/SRP6.h"
 #include "Util/CommonDefines.h"
+#include "Util/Util.h"
 
 #include <openssl/md5.h>
 #include <ctime>
@@ -760,8 +761,7 @@ bool AuthSocket::_HandleReconnectChallenge()
                 return;
             }
 
-            Field* fields = queryResult->Fetch();
-            self->srp.SetStrongSessionKey(fields[0].GetString());
+            self->_reconnectKeys = queryResult->Fetch()[0].GetCppString();
 
             ///- All good, await client's proof
             self->_status = STATUS_RECON_PROOF;
@@ -799,20 +799,29 @@ bool AuthSocket::_HandleReconnectProof()
         ///- Session is closed unless overriden
         self->_status = STATUS_CLOSED;
 
-        BigNumber K = self->srp.GetStrongSessionKey();
-        if (self->_login.empty() || !self->_reconnectProof.GetNumBytes() || !K.GetNumBytes())
+        if (self->_login.empty() || !self->_reconnectProof.GetNumBytes())
             return;
 
         BigNumber t1;
         t1.SetBinary(lp->R1, 16);
 
-        Sha1Hash sha;
-        sha.Initialize();
-        sha.UpdateData(self->_login);
-        sha.UpdateBigNumbers(&t1, &self->_reconnectProof, &K, nullptr);
-        sha.Finalize();
+        Tokens keys = StrSplit(self->_reconnectKeys, " ");
+        bool keyFound = false;
+        for (auto itr = keys.begin(); itr != keys.end() && !keyFound; ++itr)
+        {
+            BigNumber K;
+            K.SetHexStr(itr->c_str());
 
-        if (!memcmp(sha.GetDigest(), lp->R2, Sha1Hash::GetLength()))
+            Sha1Hash sha;
+            sha.Initialize();
+            sha.UpdateData(self->_login);
+            sha.UpdateBigNumbers(&t1, &self->_reconnectProof, &K, nullptr);
+            sha.Finalize();
+
+            keyFound = !memcmp(sha.GetDigest(), lp->R2, Sha1Hash::GetLength());
+        }
+
+        if (keyFound)
         {
             std::shared_ptr<ByteBuffer> pkt = std::make_shared<ByteBuffer>();
             if (!self->VerifyVersion(lp->R1, sizeof(lp->R1), lp->R3, true))
@@ -1151,7 +1160,8 @@ void AuthSocket::verifyVersionAndFinalizeAuthentication(std::shared_ptr<sAuthLog
     // No SQL injection (escaped user input) and IP address as received by socket
     const char* K_hex = srp.GetStrongSessionKey().AsHexStr();
     // Note: In case of heavy load, this sync query will be a heavy bottleneck
-    LoginDatabase.DirectPExecute("UPDATE account SET sessionkey = '%s', locale = '%s', failed_logins = 0, os = '%s', platform = '%s' WHERE username = '%s'", K_hex, _safelocale.c_str(), m_os.c_str(), m_platform.c_str(), _safelogin.c_str());
+    // sessionkey holds the keys of the account's last 200 logins, newest first: a login must not take the key of a client still in use
+    LoginDatabase.DirectPExecute("UPDATE account SET sessionkey = SUBSTRING_INDEX(CONCAT_WS(' ', '%s', NULLIF(sessionkey, '')), ' ', 200), locale = '%s', failed_logins = 0, os = '%s', platform = '%s' WHERE username = '%s'", K_hex, _safelocale.c_str(), m_os.c_str(), m_platform.c_str(), _safelogin.c_str());
     std::unique_ptr<QueryResult> loginfail(LoginDatabase.PQuery("SELECT id FROM account WHERE username = '%s'", _safelogin.c_str()));
     if (loginfail)
         LoginDatabase.PExecute("INSERT INTO account_logons(accountId,ip,loginTime,loginSource) VALUES('%u','%s'," _NOW_ ",'%u')", loginfail->Fetch()[0].GetUInt32(), GetRemoteAddress().c_str(), LOGIN_TYPE_REALMD);
