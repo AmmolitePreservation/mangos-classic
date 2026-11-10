@@ -21,6 +21,7 @@
 #include "Database/DatabaseEnv.h"
 #include "Globals/ObjectMgr.h"
 #include "Accounts/AccountMgr.h"
+#include "World/World.h"
 
 // Character Dump tables
 struct DumpTable
@@ -402,7 +403,7 @@ DumpReturn PlayerDumpReader::LoadDump(const std::string& file, uint32 account, s
 {
     // check character count
     uint32 charcount = sAccountMgr.GetCharactersCount(account);
-    if (charcount >= 10)
+    if (charcount >= sWorld.getConfig(CONFIG_UINT32_CHARACTERS_PER_REALM))
         return DUMP_TOO_MANY_CHARS;
 
     FILE* fin = fopen(file.c_str(), "r");

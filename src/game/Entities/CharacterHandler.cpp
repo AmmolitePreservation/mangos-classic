@@ -214,13 +214,13 @@ bool LoginQueryHolder::Initialize()
 
 // don't call WorldSession directly
 // it may get deleted before the query callbacks get executed
-// instead pass an account id to this handler
+// instead pass a session id to this handler
 class CharacterHandler
 {
     public:
-        void HandleCharEnumCallback(QueryResult* result, uint32 account)
+        void HandleCharEnumCallback(QueryResult* result, uint32 sessionId)
         {
-            WorldSession* session = sWorld.FindSession(account);
+            WorldSession* session = sWorld.FindSessionById(sessionId);
             if (!session)
             {
                 delete result;
@@ -229,12 +229,12 @@ class CharacterHandler
             session->HandleCharEnum(result);
         }
 
-        void HandlePlayerLoginCallback(QueryResult* /*dummy*/, SqlQueryHolder* holder)
+        void HandlePlayerLoginCallback(QueryResult* /*dummy*/, SqlQueryHolder* holder, uint32 sessionId)
         {
             if (!holder) return;
 
 #ifdef ENABLE_PLAYERBOTS
-            WorldSession* session = sWorld.FindSession(((LoginQueryHolder*)holder)->GetAccountId());
+            WorldSession* session = sWorld.FindSessionById(sessionId);
             if (!session)
             {
                 delete holder;
@@ -252,7 +252,7 @@ class CharacterHandler
                 sRandomPlayerbotMgr.OnPlayerLogin(player);
             }
 #else
-            if (WorldSession* session = sWorld.FindSession(((LoginQueryHolder*)holder)->GetAccountId()))
+            if (WorldSession* session = sWorld.FindSessionById(sessionId))
                 session->HandlePlayerLogin((LoginQueryHolder*)holder);
 #endif
         }
@@ -316,7 +316,7 @@ void WorldSession::HandleCharEnum(QueryResult* result)
 void WorldSession::HandleCharEnumOpcode(WorldPacket& /*recv_data*/)
 {
     /// get all the data necessary for loading all characters (along with their pets) on the account
-    CharacterDatabase.AsyncPQuery(&chrHandler, &CharacterHandler::HandleCharEnumCallback, GetAccountId(),
+    CharacterDatabase.AsyncPQuery(&chrHandler, &CharacterHandler::HandleCharEnumCallback, GetSessionId(),
                                   //           0               1                2                3                 4                  5                       6                        7
                                   "SELECT characters.guid, characters.name, characters.race, characters.class, characters.gender, characters.playerBytes, characters.playerBytes2, characters.level, "
                                   //   8                9               10                     11                     12                     13                    14
@@ -625,6 +625,10 @@ void WorldSession::HandlePlayerLoginOpcode(WorldPacket& recv_data)
     }
 #endif
 
+    // the character is still in the world for a client of this account that dropped: free it for this one
+    if (pCurrChar && !_player && pCurrChar->GetSession()->GetAccountId() == GetAccountId() && pCurrChar->GetSession()->IsOffline())
+        pCurrChar->GetSession()->LogoutPlayer();
+
     if (_player)
     {
         // player is reconnecting
@@ -668,7 +672,7 @@ void WorldSession::HandlePlayerLoginOpcode(WorldPacket& recv_data)
         return;
     }
 
-    CharacterDatabase.DelayQueryHolder(&chrHandler, &CharacterHandler::HandlePlayerLoginCallback, holder);
+    CharacterDatabase.DelayQueryHolder(&chrHandler, &CharacterHandler::HandlePlayerLoginCallback, holder, GetSessionId());
 }
 
 #ifdef BUILD_DEPRECATED_PLAYERBOT
@@ -697,6 +701,17 @@ void PlayerbotMgr::LoginPlayerBot(ObjectGuid playerGuid)
 void WorldSession::HandlePlayerLogin(LoginQueryHolder* holder)
 {
     ObjectGuid playerGuid = holder->GetGuid();
+
+    // a character is in the world once, whichever session of the account asks
+    if (ObjectAccessor::FindPlayer(playerGuid, false))
+    {
+        delete holder;
+
+        WorldPacket data(SMSG_CHARACTER_LOGIN_FAILED, 1);
+        data << (uint8)CHAR_LOGIN_DUPLICATE_CHARACTER;
+        SendPacket(data, true);
+        return;
+    }
 
     Player* pCurrChar = new Player(this);
     SetPlayer(pCurrChar, playerGuid);
@@ -1187,15 +1202,15 @@ void WorldSession::HandleCharRenameOpcode(WorldPacket& recv_data)
     // make sure that the character belongs to the current account, that rename at login is enabled
     // and that there is no character with the desired new name
     CharacterDatabase.AsyncPQuery(&WorldSession::HandleChangePlayerNameOpcodeCallBack,
-                                  GetAccountId(), newname,
+                                  GetSessionId(), newname,
                                   "SELECT guid, name FROM characters WHERE guid = %u AND account = %u AND (at_login & %u) = %u AND NOT EXISTS (SELECT NULL FROM characters WHERE name = '%s')",
                                   guid.GetCounter(), GetAccountId(), AT_LOGIN_RENAME, AT_LOGIN_RENAME, escaped_newname.c_str()
                                  );
 }
 
-void WorldSession::HandleChangePlayerNameOpcodeCallBack(QueryResult* result, uint32 accountId, std::string newname)
+void WorldSession::HandleChangePlayerNameOpcodeCallBack(QueryResult* result, uint32 sessionId, std::string newname)
 {
-    WorldSession* session = sWorld.FindSession(accountId);
+    WorldSession* session = sWorld.FindSessionById(sessionId);
     if (!session)
     {
         delete result;

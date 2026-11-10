@@ -211,8 +211,6 @@ class WorldSession
         void SetOnline();
         void SetInCharSelection();
 
-        // Request set offline, close socket and put session offline
-        bool RequestNewSocket(WorldSocket* socket);
         bool IsOffline() const { return m_sessionState == WORLD_SESSION_STATE_OFFLINE; }
         WorldSessionState GetState() const { return m_sessionState; }
 
@@ -242,6 +240,7 @@ class WorldSession
         void AddAccountFlag(uint32 flags) { m_accountFlags |= flags; }
         void RemoveAccountFlag(uint32 flags) { m_accountFlags &= ~flags; }
         uint32 GetAccountId() const { return _accountId; }
+        uint32 GetSessionId() const { return m_sessionId; }
         std::string const& GetAccountName() const { return m_accountName; }
         Player* GetPlayer() const { return _player; }
         char const* GetPlayerName() const;
@@ -257,7 +256,6 @@ class WorldSession
         void SetPlayer(Player* plr, uint32 playerGuid);
 
         void InitializeAnticheat(const BigNumber& K);
-        void AssignAnticheat(std::unique_ptr<SessionAnticheatInterface>&& anticheat);
         SessionAnticheatInterface* GetAnticheat() const { return m_anticheat.get(); }
 
 #if defined(BUILD_DEPRECATED_PLAYERBOT) || defined(ENABLE_PLAYERBOTS)
@@ -823,12 +821,12 @@ class WorldSession
         uint32 m_GUIDLow;                                   // set logged or recently logout player (while m_playerRecentlyLogout set)
         Player* _player;
         std::shared_ptr<WorldSocket> m_socket;              // socket pointer is owned by the network thread which created it
-        std::shared_ptr<WorldSocket> m_requestSocket;       // a new socket for this session is requested (double connection)
         std::string m_localAddress;
         WorldSessionState m_sessionState;                   // this session state
 
         AccountTypes _security;
         uint32 _accountId;
+        uint32 m_sessionId;                                 // an account can hold several sessions; async query callbacks find theirs by this
         std::string m_accountName;
         uint32 m_accountFlags;
 

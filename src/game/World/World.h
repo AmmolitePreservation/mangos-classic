@@ -400,9 +400,9 @@ class World
 
         void CleanupsBeforeStop();
 
-        WorldSession* FindSession(uint32 id) const;
+        WorldSession* FindSession(uint32 accountId) const;
+        WorldSession* FindSessionById(uint32 sessionId) const;
         void AddSession(WorldSession* s);
-        bool RemoveSession(uint32 id);
         /// Get the number of current active sessions
         void UpdateMaxSessionCounters();
         uint32 GetActiveAndQueuedSessionCount() const { return m_sessions.size(); }
@@ -650,7 +650,7 @@ class World
         uint32 mail_timer;
         uint32 mail_timer_expires;
 
-        typedef std::unordered_map<uint32, WorldSession*> SessionMap;
+        typedef std::unordered_multimap<uint32, WorldSession*> SessionMap;
         typedef std::unordered_set<uint32> UniqueSessions;
         SessionMap m_sessions;
         UniqueSessions m_uniqueSessionCount;

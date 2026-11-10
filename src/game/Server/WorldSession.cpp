@@ -41,6 +41,7 @@
 #include "Loot/LootMgr.h"
 #include "Anticheat/Anticheat.hpp"
 
+#include <atomic>
 #include <mutex>
 #include <deque>
 #include <memory>
@@ -96,11 +97,13 @@ bool WorldSessionFilter::Process(WorldPacket const& packet) const
     return !MapSessionFilterHelper(m_pSession, opHandle);
 }
 
+static std::atomic<uint32> nextSessionId(0);                // sessions are constructed on network threads
+
 /// WorldSession constructor
 WorldSession::WorldSession(uint32 id, WorldSocket* sock, AccountTypes sec, time_t mute_time, LocaleConstant locale, std::string accountName, uint32 accountFlags) :
     m_muteTime(mute_time),
-    _player(nullptr), m_socket(sock ? sock->shared_from_this() : nullptr), m_requestSocket(nullptr), m_sessionState(WORLD_SESSION_STATE_CREATED),
-    _security(sec), _accountId(id), m_accountName(accountName), m_accountFlags(accountFlags),
+    _player(nullptr), m_socket(sock ? sock->shared_from_this() : nullptr), m_sessionState(WORLD_SESSION_STATE_CREATED),
+    _security(sec), _accountId(id), m_sessionId(++nextSessionId), m_accountName(accountName), m_accountFlags(accountFlags),
     m_clientOS(CLIENT_OS_UNKNOWN), m_clientPlatform(CLIENT_PLATFORM_UNKNOWN), m_orderCounter(0),
     _logoutTime(0), m_afkTime(0), m_playerSave(true), m_inQueue(false), m_playerLoading(false), m_kickSession(false), m_playerLogout(false), m_playerRecentlyLogout(false),
     m_sessionDbcLocale(sWorld.GetAvailableDbcLocale(locale)), m_sessionDbLocaleIndex(sObjectMgr.GetStorageLocaleIndexFor(locale)),
@@ -161,16 +164,6 @@ void WorldSession::SetInCharSelection()
 {
     m_sessionState = WORLD_SESSION_STATE_CHAR_SELECTION;
     m_kickTime = time(nullptr) + 15 * 60;
-}
-
-bool WorldSession::RequestNewSocket(WorldSocket* socket)
-{
-    if (m_requestSocket)
-        return false;
-
-    m_requestSocket = socket->shared_from_this();
-    m_sessionState = WORLD_SESSION_STATE_CREATED;
-    return true;
 }
 
 void WorldSession::SizeError(WorldPacket const& packet, uint32 size) const
@@ -478,17 +471,6 @@ bool WorldSession::Update(uint32 diff)
     {
         case WORLD_SESSION_STATE_CREATED:
         {
-            if (m_requestSocket)
-            {
-                std::lock_guard<std::mutex> guard(m_recvQueueLock);
-                if (!IsOffline())
-                    SetOffline();
-
-                m_socket = m_requestSocket;
-                m_requestSocket = nullptr;
-                sLog.outDetail("New Session key %s", m_socket->GetSessionKey().AsHexStr());
-            }
-            
             if (m_inQueue)
                 SendAuthQueued();
             else
@@ -545,7 +527,7 @@ bool WorldSession::Update(uint32 diff)
             if (ShouldDisconnect(time(nullptr)))   // check if delayed logout is fired
             {
                 LogoutPlayer();
-                if (!m_requestSocket && (!m_socket || m_socket->IsClosed()))
+                if (!m_socket || m_socket->IsClosed())
                     return false;
             }
 
@@ -1284,11 +1266,6 @@ void WorldSession::SendAuthQueued() const
 void WorldSession::InitializeAnticheat(const BigNumber& K)
 {
     m_anticheat = sAnticheatLib->NewSession(this, K);
-}
-
-void WorldSession::AssignAnticheat(std::unique_ptr<SessionAnticheatInterface>&& anticheat)
-{
-    m_anticheat = std::move(anticheat);
 }
 
 #ifdef BUILD_DEPRECATED_PLAYERBOT

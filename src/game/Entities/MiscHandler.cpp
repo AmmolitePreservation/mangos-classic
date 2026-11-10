@@ -437,10 +437,10 @@ void WorldSession::HandleAddFriendOpcode(WorldPacket& recv_data)
     DEBUG_LOG("WORLD: %s asked to add friend : '%s'",
               GetPlayer()->GetName(), friendName.c_str());
 
-    CharacterDatabase.AsyncPQuery(&WorldSession::HandleAddFriendOpcodeCallBack, GetAccountId(), "SELECT guid, race FROM characters WHERE name = '%s'", friendName.c_str());
+    CharacterDatabase.AsyncPQuery(&WorldSession::HandleAddFriendOpcodeCallBack, GetSessionId(), "SELECT guid, race FROM characters WHERE name = '%s'", friendName.c_str());
 }
 
-void WorldSession::HandleAddFriendOpcodeCallBack(QueryResult* result, uint32 accountId)
+void WorldSession::HandleAddFriendOpcodeCallBack(QueryResult* result, uint32 sessionId)
 {
     if (!result)
         return;
@@ -451,7 +451,7 @@ void WorldSession::HandleAddFriendOpcodeCallBack(QueryResult* result, uint32 acc
 
     delete result;
 
-    WorldSession* session = sWorld.FindSession(accountId);
+    WorldSession* session = sWorld.FindSessionById(sessionId);
     if (!session)
         return;
 
@@ -520,10 +520,10 @@ void WorldSession::HandleAddIgnoreOpcode(WorldPacket& recv_data)
     DEBUG_LOG("WORLD: %s asked to Ignore: '%s'",
               GetPlayer()->GetName(), IgnoreName.c_str());
 
-    CharacterDatabase.AsyncPQuery(&WorldSession::HandleAddIgnoreOpcodeCallBack, GetAccountId(), "SELECT guid FROM characters WHERE name = '%s'", IgnoreName.c_str());
+    CharacterDatabase.AsyncPQuery(&WorldSession::HandleAddIgnoreOpcodeCallBack, GetSessionId(), "SELECT guid FROM characters WHERE name = '%s'", IgnoreName.c_str());
 }
 
-void WorldSession::HandleAddIgnoreOpcodeCallBack(QueryResult* result, uint32 accountId)
+void WorldSession::HandleAddIgnoreOpcodeCallBack(QueryResult* result, uint32 sessionId)
 {
     if (!result)
         return;
@@ -533,7 +533,7 @@ void WorldSession::HandleAddIgnoreOpcodeCallBack(QueryResult* result, uint32 acc
 
     delete result;
 
-    WorldSession* session = sWorld.FindSession(accountId);
+    WorldSession* session = sWorld.FindSessionById(sessionId);
     if (!session)
         return;
 

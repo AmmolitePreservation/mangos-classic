@@ -55,19 +55,19 @@ void WorldSession::SendNameQueryResponse(CharacterNameQueryResponse& response) c
 
 void WorldSession::SendNameQueryResponseFromDB(ObjectGuid guid) const
 {
-    CharacterDatabase.AsyncPQuery(&WorldSession::SendNameQueryResponseFromDBCallBack, GetAccountId(),
+    CharacterDatabase.AsyncPQuery(&WorldSession::SendNameQueryResponseFromDBCallBack, GetSessionId(),
                                   //          0     1     2     3       4
                                   "SELECT guid, name, race, gender, class "
                                   "FROM characters WHERE guid = '%u'",
                                   guid.GetCounter());
 }
 
-void WorldSession::SendNameQueryResponseFromDBCallBack(QueryResult* result, uint32 accountId)
+void WorldSession::SendNameQueryResponseFromDBCallBack(QueryResult* result, uint32 sessionId)
 {
     if (!result)
         return;
 
-    WorldSession* session = sWorld.FindSession(accountId);
+    WorldSession* session = sWorld.FindSessionById(sessionId);
     if (!session)
     {
         delete result;

@@ -180,30 +180,22 @@ void World::CleanupsBeforeStop()
     sMapMgr.UnloadAll();                             // unload all grids (including locked in memory)
 }
 
-/// Find a session by its id
-WorldSession* World::FindSession(uint32 id) const
+/// Find one of the sessions of an account
+WorldSession* World::FindSession(uint32 accountId) const
 {
-    SessionMap::const_iterator itr = m_sessions.find(id);
+    SessionMap::const_iterator itr = m_sessions.find(accountId);
 
     if (itr != m_sessions.end())
-        return itr->second;                                 // also can return nullptr for kicked session
+        return itr->second;
     return nullptr;
 }
 
-/// Remove a given session
-bool World::RemoveSession(uint32 id)
+WorldSession* World::FindSessionById(uint32 sessionId) const
 {
-    ///- Find the session, kick the user, but we can't delete session at this moment to prevent iterator invalidation
-    SessionMap::const_iterator itr = m_sessions.find(id);
-
-    if (itr != m_sessions.end() && itr->second)
-    {
-        if (itr->second->PlayerLoading())
-            return false;
-        itr->second->KickPlayer();
-    }
-
-    return true;
+    for (auto const& data : m_sessions)
+        if (data.second->GetSessionId() == sessionId)
+            return data.second;
+    return nullptr;
 }
 
 void World::AddSession(WorldSession* s)
@@ -218,42 +210,7 @@ World::AddSession_(WorldSession* s)
 {
     MANGOS_ASSERT(s);
 
-    if (FindSession(s->GetAccountId()))
-    {
-        sLog.outError("Trying to add an already existing session");
-        return;
-    }
-
-    // NOTE - Still there is race condition in WorldSession* being used in the Sockets
-
-    ///- kick already loaded player with same account (if any) and remove session
-    ///- if player is in loading and want to load again, return
-    if (!RemoveSession(s->GetAccountId()))
-    {
-        s->KickPlayer();
-        delete s;                                           // session not added yet in session list, so not listed in queue
-        return;
-    }
-
-    // decrease session counts only at not reconnection case
-    bool decrease_session = true;
-
-    // if session already exist, prepare to it deleting at next world update
-    // NOTE - KickPlayer() should be called on "old" in RemoveSession()
-    {
-        SessionMap::const_iterator old = m_sessions.find(s->GetAccountId());
-
-        if (old != m_sessions.end())
-        {
-            // prevent decrease sessions count if session queued
-            if (RemoveQueuedSession(old->second))
-                decrease_session = false;
-            // do not remove replaced session from queue if listed
-            delete old->second;
-        }
-    }
-
-    m_sessions[s->GetAccountId()] = s;
+    m_sessions.emplace(s->GetAccountId(), s);
 
     uint32 Sessions = GetActiveAndQueuedSessionCount();
     uint32 pLimit = GetPlayerAmountLimit();
@@ -261,8 +218,7 @@ World::AddSession_(WorldSession* s)
 
     // so we don't count the user trying to
     // login as a session and queue the socket that we are using
-    if (decrease_session)
-        --Sessions;
+    --Sessions;
 
     if (m_uniqueSessionCount.find(s->GetAccountId()) == m_uniqueSessionCount.end())
         m_uniqueSessionCount.insert(s->GetAccountId());
@@ -538,7 +494,7 @@ void World::LoadConfigSettings(bool reload)
 
     setConfig(CONFIG_UINT32_CHARACTERS_CREATING_DISABLED, "CharactersCreatingDisabled", 0);
 
-    setConfigMinMax(CONFIG_UINT32_CHARACTERS_PER_REALM, "CharactersPerRealm", 10, 1, 10);
+    setConfigMinMax(CONFIG_UINT32_CHARACTERS_PER_REALM, "CharactersPerRealm", 10, 1, 255);
 
     // must be after CONFIG_UINT32_CHARACTERS_PER_REALM
     setConfigMin(CONFIG_UINT32_CHARACTERS_PER_ACCOUNT, "CharactersPerAccount", 50, getConfig(CONFIG_UINT32_CHARACTERS_PER_REALM));
@@ -2013,9 +1969,10 @@ BanReturn World::BanAccount(BanMode mode, std::string nameOrIP, uint32 duration_
                                    account, duration_secs, safe_author.c_str(), reason.c_str());
         }
 
-        if (WorldSession* sess = FindSession(account))
-            if (std::string(sess->GetPlayerName()) != author)
-                sess->KickPlayer();
+        auto sessions = m_sessions.equal_range(account);
+        for (auto itr = sessions.first; itr != sessions.second; ++itr)
+            if (std::string(itr->second->GetPlayerName()) != author)
+                itr->second->KickPlayer();
     }
     while (resultAccounts->NextRow());
 
