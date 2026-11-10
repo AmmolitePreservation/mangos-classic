@@ -155,7 +155,6 @@ typedef struct AUTH_LOGON_PROOF_S_BUILD_6005
 
 typedef struct AUTH_RECONNECT_PROOF_C
 {
-    uint8   cmd;
     uint8   R1[16];
     uint8   R2[20];
     uint8   R3[20];
@@ -720,7 +719,7 @@ bool AuthSocket::_HandleReconnectChallenge()
         uint16 remaining = header->size;
         DEBUG_LOG("[ReconnectChallenge] got header, body is %#04x bytes", remaining);
 
-        if ((remaining < sizeof(sAuthLogonChallengeBody) - 10))
+        if ((remaining < sizeof(sAuthLogonChallengeBody) - AUTH_LOGON_MAX_NAME))
             return;
 
         ///- Session is closed unless overriden
@@ -736,7 +735,7 @@ bool AuthSocket::_HandleReconnectChallenge()
                 return;
             }
 
-            if (body->userName_len > 10)
+            if (body->userName_len > AUTH_LOGON_MAX_NAME)
                 return;
 
             body->userName[body->userName_len] = '\0';
@@ -815,7 +814,10 @@ bool AuthSocket::_HandleReconnectProof()
             Sha1Hash sha;
             sha.Initialize();
             sha.UpdateData(self->_login);
-            sha.UpdateBigNumbers(&t1, &self->_reconnectProof, &K, nullptr);
+            // Fixed widths, as the client: R1 and the challenge on 16 bytes, K on 40
+            sha.UpdateData(t1.AsByteArray(16));
+            sha.UpdateData(self->_reconnectProof.AsByteArray(16));
+            sha.UpdateData(K.AsByteArray(40));
             sha.Finalize();
 
             keyFound = !memcmp(sha.GetDigest(), lp->R2, Sha1Hash::GetLength());
@@ -839,6 +841,8 @@ bool AuthSocket::_HandleReconnectProof()
 
             // Set _status to authed!
             self->_status = STATUS_AUTHED;
+
+            self->ProcessIncomingData();
 
             return;
         }
