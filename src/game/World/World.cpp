@@ -675,6 +675,7 @@ void World::LoadConfigSettings(bool reload)
     setConfig(CONFIG_BOOL_PLAYER_COMMANDS, "PlayerCommands", true);
 
     setConfig(CONFIG_UINT32_INSTANT_LOGOUT, "InstantLogout", SEC_MODERATOR);
+    setConfig(CONFIG_BOOL_AFK_LOGOUT, "AfkLogout", true);
 
     setConfigMin(CONFIG_UINT32_GROUP_OFFLINE_LEADER_DELAY, "Group.OfflineLeaderDelay", 300, 0);
 

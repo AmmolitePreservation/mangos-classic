@@ -515,7 +515,7 @@ bool WorldSession::Update(uint32 diff)
             else if (!m_playerLoading)
             {
                 time_t curTime = time(nullptr);
-                if (ShouldAfkDisconnect(curTime) || ShouldLogOut(curTime)) // check if delayed logout or afk is fired
+                if ((sWorld.getConfig(CONFIG_BOOL_AFK_LOGOUT) && ShouldAfkDisconnect(curTime)) || ShouldLogOut(curTime)) // check if delayed logout or afk is fired
                     LogoutPlayer();
             }
 
