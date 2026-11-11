@@ -64,7 +64,7 @@ enum SecurityFlags
 #pragma pack(push,1)
 #endif
 
-# define AUTH_LOGON_MAX_NAME 16
+# define AUTH_LOGON_MAX_NAME 32
 
 struct sAuthLogonChallengeBody
 {
