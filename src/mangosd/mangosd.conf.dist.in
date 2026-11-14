@@ -711,6 +711,16 @@ LogColors = ""
 #        You can set it to very high value to prevent oldest guild events to be rewritten by latest guild events - but it can slow down performance
 #        Default: 100
 #
+#    Guild.CharterSignaturesPerCharacter
+#        Who may sign one guild charter: one character per account, or every character
+#        Default: 0 (one signature per account, original behavior)
+#                 1 (every character, the other characters of a signer's account included)
+#
+#    Auction.BidOnOwnAccount
+#        Whether a character may bid on or buy out an auction another character of its account posted, online or not
+#        Default: 0 (refused, original behavior)
+#                 1 (allowed)
+#
 #    MirrorTimer.Fatigue.Max
 #        Fatigue max timer value (in secs)
 #        Default: 60 (1 minute)
@@ -858,6 +868,8 @@ Quests.HighLevelHideDiff = 7
 Quests.IgnoreRaid = 0
 Group.OfflineLeaderDelay = 300
 Guild.EventLogRecordsCount = 100
+Guild.CharterSignaturesPerCharacter = 0
+Auction.BidOnOwnAccount = 0
 MirrorTimer.Fatigue.Max = 60
 MirrorTimer.Breath.Max = 60
 MirrorTimer.Environmental.Max = 1

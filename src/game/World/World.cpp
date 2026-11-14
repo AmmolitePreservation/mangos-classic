@@ -680,6 +680,8 @@ void World::LoadConfigSettings(bool reload)
     setConfigMin(CONFIG_UINT32_GROUP_OFFLINE_LEADER_DELAY, "Group.OfflineLeaderDelay", 300, 0);
 
     setConfigMin(CONFIG_UINT32_GUILD_EVENT_LOG_COUNT, "Guild.EventLogRecordsCount", GUILD_EVENTLOG_MAX_RECORDS, GUILD_EVENTLOG_MAX_RECORDS);
+    setConfig(CONFIG_BOOL_GUILD_CHARTER_SIGNATURES_PER_CHARACTER, "Guild.CharterSignaturesPerCharacter", false);
+    setConfig(CONFIG_BOOL_AUCTION_BID_ON_OWN_ACCOUNT, "Auction.BidOnOwnAccount", false);
 
     setConfig(CONFIG_UINT32_MIRRORTIMER_FATIGUE_MAX,       "MirrorTimer.Fatigue.Max", 60);
     setConfig(CONFIG_UINT32_MIRRORTIMER_BREATH_MAX,        "MirrorTimer.Breath.Max", 60);

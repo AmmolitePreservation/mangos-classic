@@ -377,7 +377,10 @@ void WorldSession::HandlePetitionSignOpcode(WorldPacket& recv_data)
     if(!_player->GetPlayerbotAI())
     {
 #endif
-    queryResult = CharacterDatabase.PQuery("SELECT playerguid FROM petition_sign WHERE player_account = '%u' AND petitionguid = '%u'", GetAccountId(), petitionLowGuid);
+    if (!sWorld.getConfig(CONFIG_BOOL_GUILD_CHARTER_SIGNATURES_PER_CHARACTER))
+        queryResult = CharacterDatabase.PQuery("SELECT playerguid FROM petition_sign WHERE player_account = '%u' AND petitionguid = '%u'", GetAccountId(), petitionLowGuid);
+    else
+        queryResult = nullptr;
 
     if (queryResult)
     {
