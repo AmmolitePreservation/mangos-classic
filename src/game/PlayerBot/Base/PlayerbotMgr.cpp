@@ -1125,40 +1125,19 @@ bool ChatHandler::HandlePlayerbotCommand(char* args)
         return false;
     }
 
-    // Several characters of one account can be played at once: whether they take places under the limit is a setting.
-    if (botConfig.GetBoolDefault("PlayerbotAI.MaxNumBotsCountsPlayers", true))
+    auto resultchar = CharacterDatabase.PQuery("SELECT COUNT(*) FROM characters WHERE online = '1' AND account = '%u'", m_session->GetAccountId());
+    if (resultchar)
     {
-        auto resultchar = CharacterDatabase.PQuery("SELECT COUNT(*) FROM characters WHERE online = '1' AND account = '%u'", m_session->GetAccountId());
-        if (resultchar)
-        {
-            Field* fields = resultchar->Fetch();
-            int acctcharcount = fields[0].GetUInt32();
-            int maxnum = botConfig.GetIntDefault("PlayerbotAI.MaxNumBots", 9);
-            if (!(m_session->GetSecurity() > SEC_PLAYER))
-                if (acctcharcount > maxnum && (cmdStr == "add" || cmdStr == "login"))
-                {
-                    PSendSysMessage("|cffff0000You cannot summon anymore bots.(Current Max: |cffffffff%u)", maxnum);
-                    SetSentErrorMessage(true);
-                    return false;
-                }
-        }
-    }
-    else if (!(m_session->GetSecurity() > SEC_PLAYER) && (cmdStr == "add" || cmdStr == "login"))
-    {
-        const uint32 maxnum = botConfig.GetIntDefault("PlayerbotAI.MaxNumBots", 9);
-        uint32 botCount = 0;
-        {
-            HashMapHolder<Player>::ReadGuard guard(HashMapHolder<Player>::GetLock());
-            for (auto const& entry : sObjectAccessor.GetPlayers())
-                if (entry.second->GetPlayerbotAI() && entry.second->GetSession()->GetAccountId() == m_session->GetAccountId())
-                    ++botCount;
-        }
-        if (botCount >= maxnum)
-        {
-            PSendSysMessage("|cffff0000You cannot summon anymore bots.(Current Max: |cffffffff%u)", maxnum);
-            SetSentErrorMessage(true);
-            return false;
-        }
+        Field* fields = resultchar->Fetch();
+        int acctcharcount = fields[0].GetUInt32();
+        int maxnum = botConfig.GetIntDefault("PlayerbotAI.MaxNumBots", 9);
+        if (!(m_session->GetSecurity() > SEC_PLAYER))
+            if (acctcharcount > maxnum && (cmdStr == "add" || cmdStr == "login"))
+            {
+                PSendSysMessage("|cffff0000You cannot summon anymore bots.(Current Max: |cffffffff%u)", maxnum);
+                SetSentErrorMessage(true);
+                return false;
+            }
     }
 
     auto resultlvl = CharacterDatabase.PQuery("SELECT level, name, race FROM characters WHERE guid = '%u'", guid.GetCounter());

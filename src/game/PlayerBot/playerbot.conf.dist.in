@@ -24,13 +24,8 @@ ConfVersion=2019031701
 #        Default: 0.5 / 1.0
 #
 #    PlayerbotAI.MaxNumBots
-#        Limits the number of bots per account
+#        Limits the number of bots per account (Max 9)
 #        Default: 9
-#
-#    PlayerbotAI.MaxNumBotsCountsPlayers
-#        Whether the account's characters played from their own clients take places under MaxNumBots
-#        Default: 1 (every online character of the account counts, original behavior)
-#                 0 (only bots count)
 #
 #    PlayerbotAI.RestrictBotLevel
 #        Restrict the allowed bot level (Current Max 60)
@@ -82,7 +77,6 @@ PlayerbotAI.DebugWhisper = 0
 PlayerbotAI.FollowDistanceMin = 0.5
 PlayerbotAI.FollowDistanceMax = 1.0
 PlayerbotAI.MaxNumBots = 9
-PlayerbotAI.MaxNumBotsCountsPlayers = 1
 PlayerbotAI.RestrictBotLevel = 60
 PlayerbotAI.BotguyQuests = ""
 PlayerbotAI.BotguyCost = 0
