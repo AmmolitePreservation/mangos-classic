@@ -548,12 +548,12 @@ LogColors = ""
 #    CharactersPerAccount
 #        Limit numbers of characters per account (at all realms).
 #        Note: this setting limits the character creating at the _current_ realm base at characters amount at all realms
-#        Default: 50
+#        Default: 100
 #                The number must be >= CharactersPerRealm
 #
 #    CharactersPerRealm
 #        Limit numbers of characters for account at realm
-#        Default: 10 (what a stock client's character screen shows)
+#        Default: 100 (a stock client's character screen shows 10; the login plugin lifts its limit)
 #                The number must be between 1 and 255
 #
 #    SkipCinematics
@@ -825,8 +825,8 @@ MinPlayerName = 2
 MinCharterName = 2
 MinPetName = 2
 CharactersCreatingDisabled = 0
-CharactersPerAccount = 50
-CharactersPerRealm = 10
+CharactersPerAccount = 100
+CharactersPerRealm = 100
 SkipCinematics = 0
 MaxPlayerLevel = 60
 StartPlayerLevel = 1
@@ -887,8 +887,8 @@ PlayerCommands = 1
 #
 #    AllowTwoSide.Accounts
 #        Allow accounts to create characters in both teams in any game type.
-#        Default: 0 (Not allowed)
-#                 1 (Allowed)
+#        Default: 1 (Allowed: one account holds a player's characters of both teams)
+#                 0 (Not allowed on PvP realms)
 #
 #    AllowTwoSide.Interaction.Chat
 #    AllowTwoSide.Interaction.Channel
@@ -926,7 +926,7 @@ PlayerCommands = 1
 #
 ###################################################################################################################
 
-AllowTwoSide.Accounts = 0
+AllowTwoSide.Accounts = 1
 AllowTwoSide.Interaction.Chat = 0
 AllowTwoSide.Interaction.Channel = 0
 AllowTwoSide.Interaction.Group = 0
