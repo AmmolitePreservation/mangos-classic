@@ -728,12 +728,14 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder* holder)
     // "GetAccountId()==db stored account id" checked in LoadFromDB (prevent login not own character using cheating tools)
     if (!pCurrChar->LoadFromDB(playerGuid, holder))
     {
-        KickPlayer();                                       // disconnect client, player no set to session and it will not deleted or saved at kick
-        // also deletes player
+        sLog.outError("HandlePlayerLogin> LoadFromDB failed to load %s, AccountId = %u", playerGuid.GetString().c_str(), GetAccountId());
+
+        // the session must not keep a character that did not load: going offline tells its friends and logout saves it
+        SetPlayer(nullptr, ObjectGuid());
+        delete pCurrChar;
+        KickPlayer();
         delete holder;                                      // delete all unprocessed queries
         m_playerLoading = false;
-
-        sLog.outError("HandlePlayerLogin> LoadFromDB failed to load %s, AccountId = %u", pCurrChar->GetGuidStr().c_str(), GetAccountId());
 
         WorldPacket data(SMSG_CHARACTER_LOGIN_FAILED, 1);
         data << (uint8)CHAR_LOGIN_NO_CHARACTER;
