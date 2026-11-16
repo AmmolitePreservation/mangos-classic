@@ -329,7 +329,8 @@ Unit::Unit() :
     m_hasHeartbeatProcCounter(0),
     m_ignoreRangedTargets(false),
     m_auraUpdateMask(0),
-    m_combatManager(this)
+    m_combatManager(this),
+    m_hasPeriodicAura(false)
 {
     m_objectType |= TYPEMASK_UNIT;
     m_objectTypeId = TYPEID_UNIT;
@@ -639,14 +640,6 @@ void Unit::EvadeTimerExpired()
     getThreatManager().SetTargetSuppressed(GetVictim());
 }
 
-enum SwingErrors
-{
-    SWING_ERROR_NOT_IN_RANGE,
-    SWING_ERROR_TARGET_NOT_ALIVE,
-    SWING_ERROR_BAD_FACING,
-    SWING_ERROR_CANT_ATTACK_TARGET,
-};
-
 bool Unit::UpdateMeleeAttackingState()
 {
     Unit* victim = GetVictim();
@@ -656,6 +649,11 @@ bool Unit::UpdateMeleeAttackingState()
     if (GetTypeId() != TYPEID_PLAYER && (!static_cast<Creature*>(this)->CanInitiateAttack()))
         return false;
 
+    // a creature draws its sheathed weapon when it fights in melee
+    // a caster holding its range keeps it sheathed until its victim is within melee reach
+    if (IsCreature() && GetSheath() == SHEATH_STATE_UNARMED && !(AI() && AI()->GetCurrentRangedMode() && !CanReachWithMeleeAttack(victim)))
+        SetSheath(SHEATH_STATE_MELEE);
+
     if (m_extraAttacks)
     {
         DoExtraAttacks(victim);
@@ -664,7 +662,7 @@ bool Unit::UpdateMeleeAttackingState()
     if (!isAttackReady(BASE_ATTACK) && !(isAttackReady(OFF_ATTACK) && hasOffhandWeaponForAttack()))
         return false;
 
-    uint8 swingError = 0;
+    uint8 swingError = SWING_ERROR_NONE;
     if (!CanReachWithMeleeAttack(victim))
         swingError = SWING_ERROR_NOT_IN_RANGE;
     else if (!HasInArc(victim, 2 * M_PI_F / 3))
@@ -700,8 +698,11 @@ bool Unit::UpdateMeleeAttackingState()
 
     if (swingError)
     {
-        setAttackTimer(BASE_ATTACK, 100);
-        setAttackTimer(OFF_ATTACK, 100);
+        // delaying a weapon that is not ready would make it ready sooner
+        if (isAttackReady(BASE_ATTACK))
+            setAttackTimer(BASE_ATTACK, 100);
+        if (hasOffhandWeaponForAttack() && isAttackReady(OFF_ATTACK))
+            setAttackTimer(OFF_ATTACK, 100);
     }
 
     Player* player = IsClientControlled() ? const_cast<Player*>(GetClientControlling()) : nullptr;
@@ -2817,14 +2818,17 @@ void Unit::SendMeleeAttackStart(const Unit& victim) const
     DETAIL_FILTER_LOG(LOG_FILTER_COMBAT, "WORLD: Sent SMSG_ATTACKSTART");
 }
 
-void Unit::SendMeleeAttackStop(const Unit& victim) const
+void Unit::SendMeleeAttackStop(Unit const* victim) const
 {
     WorldPacket data(SMSG_ATTACKSTOP, (4 + 16));            // we guess size
     data << GetPackGUID();
-    data << victim.GetPackGUID();
-    data << uint32(IsDead() ? 1 : 0);
+    if (victim)
+        data << victim->GetPackGUID();
+    else
+        data << PackedGuid();
+    data << uint32(victim && IsDead() ? 1 : 0);             // the client uses it only with a victim
     SendMessageToSet(data, true);
-    DETAIL_FILTER_LOG(LOG_FILTER_COMBAT, "%s stopped attacking %s", GetGuidStr().c_str(), victim.GetGuidStr().c_str());
+    DETAIL_FILTER_LOG(LOG_FILTER_COMBAT, "%s stopped attacking %s", GetGuidStr().c_str(), victim ? victim->GetGuidStr().c_str() : "nothing");
 }
 
 SpellMissInfo Unit::MeleeSpellHitResult(Unit* pVictim, SpellEntry const* spellInfo, uint32* heartbeatResistChance/* = nullptr*/)
@@ -4860,6 +4864,11 @@ bool Unit::AddSpellAuraHolder(SpellAuraHolder* holder)
     if (!holder->IsDeleted())
     {
         holder->HandleSpellSpecificBoosts(true);
+        m_hasPeriodicAura = m_hasPeriodicAura || holder->HasPeriodicAura();
+        if (m_hasPeriodicAura)
+            SetNextUpdateTime(1);
+        else
+            SetNextUpdateTime(0);
         SpellProcEventEntry const* procEntry = sSpellMgr.GetSpellProcEvent(aurSpellInfo->Id);
         if (aurSpellInfo->procFlags & PROC_FLAG_HEARTBEAT || (procEntry && procEntry->procFlags & PROC_FLAG_HEARTBEAT))
             ++m_hasHeartbeatProcCounter;
@@ -5344,6 +5353,9 @@ void Unit::RemoveSpellAuraHolder(SpellAuraHolder* holder, AuraRemoveMode mode)
         if (itr->second == holder)
         {
             m_spellAuraHolders.erase(itr);
+            m_hasPeriodicAura = HasPeriodicAura();
+            if (!m_hasPeriodicAura)
+                SetNextUpdateTime(0);
             break;
         }
     }
@@ -5585,6 +5597,19 @@ bool Unit::HasAuraTypeWithCaster(AuraType auratype, ObjectGuid caster) const
     for (auto aura : auras)
         if (aura->GetCasterGuid() == caster)
             return true;
+    return false;
+}
+
+bool Unit::HasPeriodicAura() const
+{
+    for (auto holder : m_spellAuraHolders)
+    {
+        for (auto aura : holder.second->m_auras)
+        {
+            if (aura && aura->IsPeriodic())
+                return true;
+        }
+    }
     return false;
 }
 
@@ -6178,12 +6203,8 @@ void Unit::SetPowerType(Powers new_powertype)
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_POWER_TYPE);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_POWER_TYPE);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_POWER_TYPE);
 
     // special cases for power type switching (druid and pets only)
     if (GetTypeId() == TYPEID_PLAYER || (GetTypeId() == TYPEID_UNIT && ((Creature*)this)->IsPet()))
@@ -6402,7 +6423,7 @@ void Unit::MeleeAttackStop(Unit* victim)
         clearUnitState(UNIT_STAT_MELEE_ATTACKING);
         InterruptSpell(CURRENT_MELEE_SPELL);
         if (victim)
-            SendMeleeAttackStop(*victim);
+            SendMeleeAttackStop(victim);
     }
 }
 
@@ -7944,7 +7965,7 @@ void Unit::SetInCombatState(bool PvP, Unit* enemy)
                     if (PvP)
                         enemy->GetCombatManager().TriggerCombatTimer(controller);
                 }
-                else
+                else if (!controller->GetVictim())
                 {
                     MANGOS_ASSERT(controller->AI()); // a player without UNIT_FLAG_PLAYER_CONTROLLED should always have AI
                     controller->AI()->AttackStart(enemy);
@@ -8168,9 +8189,9 @@ bool Unit::IsVisibleForOrDetect(Unit const* u, WorldObject const* viewPoint, boo
     }
 
     // Any units far than max visible distance for viewer or not in our map are not visible too
-    if (!at_same_transport) // distance for show player/pet/creature (no transport case)
+    if (!at_same_transport && !GetVisibilityData().IsInfiniteVisibility()) // distance for show player/pet/creature (no transport case)
     {
-        if (!IsWithinDistInMap(viewPoint, u->GetVisibilityData().GetVisibilityDistanceFor((WorldObject *)this), is3dDistance))
+        if (!IsWithinDistInMap(viewPoint, u->GetVisibilityData().GetVisibilityDistanceFor((WorldObject*)this), is3dDistance))
             return false;
     }
 
@@ -8312,10 +8333,8 @@ void Unit::UpdateVisibilityAndView()
         }
     }
 
-    GetViewPoint().Call_UpdateVisibilityForOwner();
-    UpdateObjectVisibility();
+    GetMap()->AddUpdateMovementObject(this);
     ScheduleAINotify(0);
-    GetViewPoint().Event_ViewPointVisibilityChanged();
 }
 
 SpellSchoolMask Unit::GetMainAttackSchoolMask()
@@ -9230,17 +9249,13 @@ void Unit::SetHealth(uint32 val)
     SetUInt32Value(UNIT_FIELD_HEALTH, val);
 
     // group update
-    if (GetTypeId() == TYPEID_PLAYER)
+    if (IsPlayer())
     {
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_CUR_HP);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_HP);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_HP);
 }
 
 void Unit::SetMaxHealth(uint32 val)
@@ -9249,17 +9264,13 @@ void Unit::SetMaxHealth(uint32 val)
     SetUInt32Value(UNIT_FIELD_MAXHEALTH, val);
 
     // group update
-    if (GetTypeId() == TYPEID_PLAYER)
+    if (IsPlayer())
     {
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_MAX_HP);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MAX_HP);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MAX_HP);
 
     if (val < health)
         SetHealth(val);
@@ -9288,12 +9299,8 @@ void Unit::SetPower(Powers power, uint32 val)
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_CUR_POWER);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_POWER);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_POWER);
 
     if (GetTypeId() == TYPEID_UNIT && ((Creature*)this)->IsPet())
     {
@@ -9315,12 +9322,8 @@ void Unit::SetMaxPower(Powers power, uint32 val)
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_MAX_POWER);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MAX_POWER);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MAX_POWER);
 
     if (val < cur_power)
         SetPower(power, val);
@@ -9336,12 +9339,8 @@ void Unit::ApplyPowerMod(Powers power, uint32 val, bool apply)
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_CUR_POWER);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_POWER);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_CUR_POWER);
 }
 
 void Unit::ApplyMaxPowerMod(Powers power, uint32 val, bool apply)
@@ -9354,12 +9353,8 @@ void Unit::ApplyMaxPowerMod(Powers power, uint32 val, bool apply)
         if (((Player*)this)->GetGroup())
             ((Player*)this)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_MAX_POWER);
     }
-    else if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MAX_POWER);
-    }
+    else if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MAX_POWER);
 }
 
 void Unit::ApplyAuraProcTriggerDamage(Aura* aura, bool apply)
@@ -9960,6 +9955,10 @@ bool Unit::SetConfused(bool apply, ObjectGuid casterGuid, uint32 spellID)
                 Unit* source = (fears.empty() ? nullptr : fears.back()->GetCaster());
                 GetMotionMaster()->MoveFleeing(source ? source : this);
             }
+
+            // The generator that would give control back may be gone (e.g. cleared on uncharm)
+            if (!apply && IsPlayer() && !HasCharmer() && !IsFleeing() && !IsInPanic())
+                static_cast<Player*>(this)->UpdateClientControl(this, true);
         }
 
         if (apply)
@@ -10003,6 +10002,10 @@ bool Unit::SetFleeing(bool apply, ObjectGuid casterGuid/* = ObjectGuid()*/, uint
                 Unit* source = (IsInWorld() ? GetMap()->GetUnit(casterGuid) : nullptr);
                 GetMotionMaster()->MoveFleeing((source ? source : this), duration);
             }
+
+            // The generator that would give control back may be gone (e.g. cleared on uncharm)
+            if (!apply && IsPlayer() && !HasCharmer() && !IsConfused() && !IsInPanic())
+                static_cast<Player*>(this)->UpdateClientControl(this, true);
         }
 
         if (apply)
@@ -10202,12 +10205,8 @@ void Unit::SetDisplayId(uint32 modelId)
 
     UpdateModelData();
 
-    if (HasCharmer())
-    {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MODEL_ID);
-    }
+    if (Player* master = GetGroupUpdatePetMaster())
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_MODEL_ID);
 }
 
 void Unit::RestoreDisplayId()
@@ -10510,16 +10509,29 @@ void Unit::UpdateAuraForGroup(uint8 slot)
             player->SetAuraUpdateMask(slot);
         }
     }
-    else if (HasCharmer())
+    else if (Player* master = GetGroupUpdatePetMaster())
     {
-        Unit* charmer = GetCharmer();
-        if (charmer && (charmer->GetTypeId() == TYPEID_PLAYER) && ((Player*)charmer)->GetGroup())
-        {
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_AURAS);
-            ((Player*)charmer)->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_AURAS_NEGATIVE);
-            SetAuraUpdateMask(slot);
-        }
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_AURAS);
+        master->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_AURAS_NEGATIVE);
+        SetAuraUpdateMask(slot);
     }
+}
+
+Player* Unit::GetGroupUpdatePetMaster() const
+{
+    // Only a charm or a pet can stand in the pet fields of its master's group member stats
+    if (!HasCharmer() && !(IsCreature() && static_cast<Creature const*>(this)->IsPet()))
+        return nullptr;
+
+    Unit* master = GetMaster();
+    if (!master || !master->IsPlayer())
+        return nullptr;
+
+    Player* player = static_cast<Player*>(master);
+    if (!player->GetGroup() || player->GetGroupUpdatePet() != this)
+        return nullptr;
+
+    return player;
 }
 
 float Unit::GetAPMultiplier(WeaponAttackType attType, bool normalized)
@@ -10990,9 +11002,7 @@ void Unit::OnRelocated()
         m_last_notified_position.x = GetPositionX();
         m_last_notified_position.y = GetPositionY();
         m_last_notified_position.z = GetPositionZ();
-
-        GetViewPoint().Call_UpdateVisibilityForOwner();
-        UpdateObjectVisibility();
+        GetMap()->AddUpdateMovementObject(this);
     }
     ScheduleAINotify(World::GetRelocationAINotifyDelay());
 }
@@ -11137,7 +11147,7 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, uint32 effIdx, float x, 
     if (x == 0.0f && y == 0.0f && z == 0.0f)
         pos = CreatureCreatePos(this, GetOrientation(), CONTACT_DISTANCE, ang);
 
-    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(cinfo->GetHighGuid());
+    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(cinfo->GetHighGuid(), cinfo->Entry);
     if (!possessed->Create(lowGuid, lowGuid, pos, cinfo))
     {
         delete possessed;
@@ -11156,9 +11166,6 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, uint32 effIdx, float x, 
     possessed->SelectLevel(GetLevel());                                 // set level to same level than summoner TODO:: not sure its always the case...
     possessed->SetLinkedToOwnerAura(TEMPSPAWN_LINKED_AURA_OWNER_CHECK | TEMPSPAWN_LINKED_AURA_REMOVE_OWNER); // set what to do if linked aura is removed or the creature is dead.
 
-    // important before adding to the map!
-    SetCharmGuid(possessed->GetObjectGuid());                           // save guid of charmed creature
-
     possessed->SetSummonProperties(TEMPSPAWN_CORPSE_TIMED_DESPAWN, 5000); // set 5s corpse decay
     GetMap()->Add(static_cast<Creature*>(possessed));                   // create the creature in the client
     possessed->AIM_Initialize();                                        // even if this will be replaced it need to be initialized to take care of spawn spells
@@ -11169,10 +11176,7 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, uint32 effIdx, float x, 
         player->UnsummonPetTemporaryIfAny();
 
         player->GetCamera().SetView(possessed);                         // modify camera view to the creature view
-        // Force granting client control (required for action bars to function propely, will be taken away on demand after action bars update below)
-        player->UpdateClientControl(possessed, true, true);             // transfer client control to the creature after altering flags
         player->SetMover(possessed);                                    // set mover so now we know that creature is "moved" by this unit
-        player->SendForcedObjectUpdate();                               // we have to update client data here to avoid problem with the "release spirit" windows reappear.
     }
 
     // init CharmInfo class that will hold charm data
@@ -11186,19 +11190,14 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, uint32 effIdx, float x, 
     if (HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
         possessed->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED);
 
-    charmInfo->ProcessUnattackableTargets(possessed->m_combatData);
-
     if (player)
     {
         // Initialize pet bar
         if (uint32 charmedSpellList = possessed->GetCreatureInfo()->CharmedSpellList)
             possessed->SetSpellList(charmedSpellList);
         charmInfo->InitPossessCreateSpells();
-        player->PossessSpellInitialize();
 
-        // Take away client control immediately if we are not supposed to have control at the moment
-        if (!possessed->IsClientControlled(player))
-            player->UpdateClientControl(possessed, false);
+        possessed->SetDelayedPetSpells(); // sent after first vis update
     }
 
     // Creature Linking, Initial load is handled like respawn
@@ -11658,8 +11657,20 @@ void Unit::Uncharm(Unit* charmed, uint32 spellId)
 
         charmedPlayer->ForceHealAndPowerUpdateInZone();
 
+        const bool panic = charmed->IsInPanic(), fleeing = charmed->IsFleeing(), confused = charmed->IsConfused();
+
         charmed->GetMotionMaster()->Clear(false, true);
         charmed->GetMotionMaster()->MoveIdle();
+
+        // The clear destroyed the confused or fleeing movement of a player still under crowd control
+        if (confused)
+            charmed->GetMotionMaster()->MoveConfused();
+        else if (fleeing && !panic)
+        {
+            AuraList const& fears = charmed->GetAurasByType(SPELL_AURA_MOD_FEAR);
+            Unit* source = (fears.empty() ? nullptr : fears.back()->GetCaster());
+            charmed->GetMotionMaster()->MoveFleeing(source ? source : this);
+        }
 
         charmed->DeleteThreatList();
 
@@ -12083,6 +12094,33 @@ uint32 Unit::GetModifierXpBasedOnDamageReceived(uint32 xp)
     return xp;
 }
 
+void Unit::UpdateNextUpdateTime()
+{
+    // If we already have next update time don't reset it (movement mutation should do it)
+    if (m_nextUpdateTime)
+        return;
+
+    if (!m_events.IsEmpty() || m_hasPeriodicAura)
+        SetNextUpdateTime(1);
+    // If motion type is idle and there is no nextUpdateTime force it
+    else if (GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE)
+        SetNextUpdateTime(urand(500, 1000));
+    // If motion type is random and there is no nextUpdateTime force it
+    else if (GetMotionMaster()->GetCurrentMovementGeneratorType() == RANDOM_MOTION_TYPE)
+        SetNextUpdateTime(urand(250, 500));
+}
+
+uint32 Unit::ShouldPerformObjectUpdate(uint32 const diff)
+{
+    if (IsPlayerControlled() || IsPlayer())
+        return diff;
+
+    if (IsInCombat())
+        return diff + m_accumulatedUpdateDiff;
+
+    return WorldObject::ShouldPerformObjectUpdate(diff);
+}
+
 bool Unit::MeetsSelectAttackingRequirement(Unit* target, SpellEntry const* spellInfo, uint32 selectFlags, SelectAttackingTargetParams params, int32 unitConditionId) const
 {
     if (selectFlags)
@@ -12401,7 +12439,36 @@ void Unit::SetSwim(bool enable)
 
 void Unit::SetCanFly(bool enable)
 {
-    // TBC+
+    // Creatures fly on flying splines. A client flies by swimming through the air: without gravity and with
+    // a swimming state it keeps out of water, it moves where it looks, at swim speed.
+    if (!IsClientControlled())
+        return;
+
+    if (IsPlayer())
+        static_cast<Player*>(this)->SetFlyMode(enable);
+
+    MovementFlags const flyFlags = MovementFlags(MOVEFLAG_SWIMMING | MOVEFLAG_KEEP_SWIM_STATE | MOVEFLAG_LEVITATING);
+
+    // The client does not answer: the flags it is given become the server copy of its movement right away
+    m_movementInfo.RemoveMovementFlag(MovementFlags(MOVEFLAG_JUMPING | MOVEFLAG_FALLINGFAR));
+    if (enable)
+        m_movementInfo.AddMovementFlag(flyFlags);
+    else
+        m_movementInfo.RemoveMovementFlag(MovementFlags(flyFlags | MOVEFLAG_PITCH_UP | MOVEFLAG_PITCH_DOWN));
+    m_movementInfo.fallTime = 0;
+
+    // start fall from current height
+    if (IsPlayer())
+        static_cast<Player*>(this)->SetFallInformation(0, GetPositionZ());
+
+    if (!IsInWorld())
+        return;
+
+    // The client replaces its movement flags and position with those of this packet, then applies gravity or not
+    WorldPacket data(MSG_MOVE_TOGGLE_GRAVITY_CHEAT, 64);
+    data << GetPackGUID();
+    data << m_movementInfo;
+    SendMessageToSet(data, true);
 }
 
 void Unit::SetFeatherFall(bool enable)
@@ -12545,7 +12612,7 @@ void Unit::CharmCooldownInitialize(WorldPacket& data) const
             continue;
 
         if (cdData->IsPermanent())
-            catCDDuration |= 0x8000000;
+            catCDDuration |= 0x80000000;
 
         data << uint16(cdData->GetSpellId());
         data << uint16(cdData->GetCategory());              // spellInfo category

@@ -449,6 +449,7 @@ void World::LoadConfigSettings(bool reload)
     }
 
     setConfig(CONFIG_BOOL_AUTOLOAD_ACTIVE, "Autoload.Active", true);
+    setConfig(CONFIG_BOOL_SPECIALS_ACTIVE, "Specials.Active", false);
 
     setConfig(CONFIG_UINT32_INTERVAL_SAVE, "PlayerSave.Interval", 15 * MINUTE * IN_MILLISECONDS);
     setConfigMinMax(CONFIG_UINT32_MIN_LEVEL_STAT_SAVE, "PlayerSave.Stats.MinLevel", 0, 0, MAX_LEVEL);
@@ -1351,6 +1352,7 @@ void World::SetInitialWorldSettings()
     ///- Initialize Battlegrounds
     sLog.outString("Starting BattleGround System");
     sBattleGroundMgr.CreateInitialBattleGrounds();
+    sBattleGroundMgr.LoadPvpStatsBattleGroundId();
     CheckLootTemplates_Reference(ids_set);
 
     sLog.outString("Deleting expired bans...");
@@ -1396,10 +1398,6 @@ void World::SetInitialWorldSettings()
     // update metrics output every second
     m_timers[WUPDATE_METRICS].SetInterval(1 * IN_MILLISECONDS);
 #endif // BUILD_METRICS
-
-#ifdef BUILD_DEPRECATED_PLAYERBOT
-    PlayerbotMgr::SetInitialWorldSettings();
-#endif
 
 #ifdef ENABLE_PLAYERBOTS
     sPlayerbotAIConfig.Initialize();
@@ -1914,7 +1912,7 @@ BanReturn World::BanAccount(uint32 accountId, uint32 duration_secs, const std::s
         LoginDatabase.PExecute("INSERT INTO account_banned(account_id, banned_at, expires_at, banned_by, reason, active) VALUES ('%u', " _UNIXTIME_ ", " _UNIXTIME_ "+%u, '%s', '%s', '1')",
             accountId, duration_secs, author.c_str(), reason.c_str());
     else
-        LoginDatabase.PExecute("INSERT INTO account_banned(account_id, banned_at, expires_at, banned_by, reason, active) VALUES ('%u',  " _UNIXTIME_ ", 0, '%s', '%s', '1')",
+        LoginDatabase.PExecute("INSERT INTO account_banned(account_id, banned_at, expires_at, banned_by, reason, active) VALUES ('%u',  " _UNIXTIME_ ", " _UNIXTIME_ ", '%s', '%s', '1')",
             accountId, author.c_str(), reason.c_str());
 
     ExecuteForSessionsOfAccount(accountId, [](WorldSession& session) { session.KickPlayer(); });
@@ -2001,8 +1999,11 @@ bool World::RemoveBanAccount(BanMode mode, const std::string& source, const std:
         if (!account)
             return false;
 
+        std::string safe_source = source;
+        LoginDatabase.escape_string(safe_source);
+
         // NO SQL injection as account is uint32
-        LoginDatabase.PExecute("UPDATE account_banned SET active = '0', unbanned_at = " _UNIXTIME_ ", unbanned_by = '%s' WHERE account_id = '%u'", source.data(), account);
+        LoginDatabase.PExecute("UPDATE account_banned SET active = '0', unbanned_at = " _UNIXTIME_ ", unbanned_by = '%s' WHERE account_id = '%u'", safe_source.c_str(), account);
         WarnAccount(account, source, message, "UNBAN");
     }
     return true;

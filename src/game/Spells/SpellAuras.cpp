@@ -49,6 +49,7 @@
 #include "Loot/LootMgr.h"
 #include "AI/ScriptDevAI/include/sc_grid_searchers.h"
 #include "Spells/SpellStacking.h"
+#include "SpellAuras.h"
 
 #define NULL_AURA_SLOT 0xFF
 
@@ -2226,13 +2227,15 @@ void Aura::HandleModPossess(bool apply, bool Real)
 
         caster->TakePossessOf(target);
 
-        if (Player* playerCaster = caster->IsPlayer() ? static_cast<Player*>(caster) : nullptr)
+        // a creation not written yet carries the values
+        Player* playerCaster = caster->IsPlayer() ? static_cast<Player*>(caster) : nullptr;
+        if (playerCaster && !playerCaster->IsCreationPending(target))
         {
             UpdateData newData;
             target->BuildValuesUpdateBlockForPlayerWithFlags(newData, playerCaster, UF_FLAG_OWNER_ONLY);
             if (newData.HasData())
             {
-                WorldPacket newDataPacket = newData.BuildPacket(0, false);
+                WorldPacket newDataPacket = newData.BuildPacket(0);
                 playerCaster->SendDirectMessage(newDataPacket);
             }
         }
@@ -2311,7 +2314,7 @@ void Aura::HandleModCharm(bool apply, bool Real)
 
         caster->TakeCharmOf(target, GetId());
 
-        if (playerCaster)
+        if (playerCaster && !playerCaster->IsCreationPending(target)) // a creation not written yet carries the values
         {
             UpdateMask updateMask;
             updateMask.SetCount(target->GetValuesCount());
@@ -2323,7 +2326,7 @@ void Aura::HandleModCharm(bool apply, bool Real)
 
                 if (newData.HasData())
                 {
-                    WorldPacket newDataPacket = newData.BuildPacket(0, false);
+                    WorldPacket newDataPacket = newData.BuildPacket(0);
                     playerCaster->SendDirectMessage(newDataPacket);
                 }
             }
@@ -2717,8 +2720,8 @@ void Aura::HandleInvisibilityDetect(bool apply, bool Real)
         }
     }
 
-    if (Real && target->GetTypeId() == TYPEID_PLAYER)
-        ((Player*)target)->GetCamera().UpdateVisibilityForOwner();
+    if (Real && target->IsClientControlled())
+        target->GetMap()->AddUpdateCreateObject(const_cast<Player*>(target->GetClientControlling()));
 }
 
 void Aura::HandleDetectAmore(bool apply, bool /*real*/)
@@ -5827,6 +5830,15 @@ bool SpellAuraHolder::IsDispellableByMask(uint32 dispelMask, Unit const* caster,
         }
         return true;
     }
+    return false;
+}
+
+bool SpellAuraHolder::HasPeriodicAura() const
+{
+    for (Aura* aura : m_auras)
+        if (aura && aura->IsPeriodic())
+            return true;
+
     return false;
 }
 

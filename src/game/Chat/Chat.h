@@ -753,9 +753,6 @@ class ChatHandler
         bool HandleStableCommand(char* args);
         bool HandleWaterwalkCommand(char* args);
         bool HandleQuitCommand(char* args);
-#ifdef BUILD_DEPRECATED_PLAYERBOT
-        bool HandlePlayerbotCommand(char* args);
-#endif
 
 #ifdef ENABLE_PLAYERBOTS
         bool HandlePlayerbotCommand(char* args);
@@ -856,7 +853,6 @@ class ChatHandler
 
         typedef std::list<DeletedInfo> DeletedInfoList;
         bool GetDeletedCharacterInfoList(DeletedInfoList& foundList, std::string searchString = "");
-        std::string GenerateDeletedCharacterGUIDsWhereStr(DeletedInfoList::const_iterator& itr, DeletedInfoList::const_iterator const& itr_end);
         void HandleCharacterDeletedListHelper(DeletedInfoList const& foundList);
         void HandleCharacterDeletedRestoreHelper(DeletedInfo const& delInfo);
 

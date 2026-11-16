@@ -196,7 +196,10 @@ bool GameObject::Create(uint32 dbGuid, uint32 guidlow, uint32 name_id, Map* map,
         return false;
     }
 
-    Object::_Create(dbGuid, guidlow, goinfo->id, HIGHGUID_GAMEOBJECT);
+    if (!guidlow)                                           // no free map guid counter, already logged
+        return false;
+
+    Object::_Create(dbGuid, guidlow, goinfo->id, goinfo->GetHighGuid());
 
     m_goInfo = goinfo;
 
@@ -720,7 +723,10 @@ void GameObject::Update(const uint32 diff)
 
             // can be not in world at pool despawn
             if (IsInWorld())
-                UpdateObjectVisibility();
+            {
+                if (!IsUsingNewSpawningSystem()) // schedule out of range
+                    ScheduleOutOfRangeOnClientsIAmAt();
+            }
 
             m_forcedDespawn = false;
 
@@ -918,7 +924,7 @@ bool GameObject::LoadFromDB(uint32 dbGuid, Map* map, uint32 newGuid, uint32 forc
     }
 
     if (dynguid || newGuid == 0)
-        newGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+        newGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, entry);
 
     if (!Create(dbGuid, newGuid, entry, map, x, y, z, ang, rotation0, rotation1, rotation2, rotation3, animprogress, GO_STATE_READY))
         return false;
@@ -1079,9 +1085,9 @@ bool GameObject::isVisibleForInState(Player const* u, WorldObject const* viewPoi
     if (!IsInWorld() || !u->IsInWorld())
         return false;
 
-    // Transport always visible at this step implementation
-    if (IsMoTransport() && IsInMap(u))
-        return true;
+    // invisible at client always
+    if (!GetGOInfo()->displayId)
+        return false;
 
     // quick check visibility false cases for non-GM-mode
     if (!u->IsGameMaster())
@@ -1152,6 +1158,9 @@ bool GameObject::isVisibleForInState(Player const* u, WorldObject const* viewPoi
         if (GetEntry() == 187039 && ((u->GetVisibilityData().GetInvisibilityDetectMask() | u->GetVisibilityData().GetInvisibilityMask()) & (1 << 10)) == 0)
             return false;
     }
+
+    if (GetVisibilityData().IsInfiniteVisibility())
+        return true;
 
     // check distance
     return IsWithinDistInMap(viewPoint, GetVisibilityData().GetVisibilityDistance(), false);
@@ -1248,7 +1257,7 @@ GameObject* GameObject::SummonLinkedTrapIfAny() const
         return nullptr;
 
     GameObject* linkedGO = new GameObject;
-    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, linkedEntry);
     if (!linkedGO->Create(lowGuid, lowGuid, linkedEntry, GetMap(),
                           GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, GO_ANIMPROGRESS_DEFAULT, GO_STATE_READY))
     {
@@ -2685,6 +2694,23 @@ void GameObject::ClearGameObjectGroup()
     if (m_goGroup)
         m_goGroup->RemoveObject(this);
     m_goGroup = nullptr;
+}
+
+void GameObject::UpdateNextUpdateTime()
+{
+    // If we already have next update time don't reset it (movement mutation should do it)
+    if (m_nextUpdateTime)
+        return;
+
+    if (!m_events.IsEmpty() || m_AI)
+        SetNextUpdateTime(1);
+    else if (GetGOInfo()->IsSlowUpdateObject())
+        SetNextUpdateTime(urand(500, 1000));
+}
+
+uint32 GameObject::ShouldPerformObjectUpdate(uint32 const diff)
+{
+    return WorldObject::ShouldPerformObjectUpdate(diff);
 }
 
 QuaternionData GameObject::GetWorldRotation() const
