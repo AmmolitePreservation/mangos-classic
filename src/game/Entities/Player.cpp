@@ -19209,9 +19209,9 @@ bool Player::isTotalImmune() const
 void Player::BanPlayer(std::string const& reason)
 {
     std::string reasonCopy = reason;
-    sWorld.GetMessager().AddMessage([sessionId = GetSession()->GetAccountId(), reasonCopy](World* world)
+    sWorld.GetMessager().AddMessage([accountId = GetSession()->GetAccountId(), reasonCopy](World* world)
     {
-        sWorld.BanAccount(world->FindSession(sessionId), 0, reasonCopy, "Automatic script ban.");
+        world->BanAccount(accountId, 0, reasonCopy, "Automatic script ban.");
     });
 }
 

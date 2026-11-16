@@ -352,15 +352,7 @@ class WorldSession
             return m_Tutorials[intId];
         }
 
-        void SetTutorialInt(uint32 intId, uint32 value)
-        {
-            if (m_Tutorials[intId] != value)
-            {
-                m_Tutorials[intId] = value;
-                if (m_tutorialState == TUTORIALDATA_UNCHANGED)
-                    m_tutorialState = TUTORIALDATA_CHANGED;
-            }
-        }
+        void SetTutorialInt(uint32 intId, uint32 value);
 
         // auction
         void SendAuctionHello(Unit* unit) const;

@@ -233,7 +233,6 @@ class CharacterHandler
         {
             if (!holder) return;
 
-#ifdef ENABLE_PLAYERBOTS
             WorldSession* session = sWorld.FindSessionById(sessionId);
             if (!session)
             {
@@ -241,9 +240,9 @@ class CharacterHandler
                 return;
             }
 
-            ObjectGuid guid = ((LoginQueryHolder*)holder)->GetGuid();
             session->HandlePlayerLogin((LoginQueryHolder*)holder);
 
+#ifdef ENABLE_PLAYERBOTS
             Player* player = session->GetPlayer();
             if (player)
             {
@@ -251,9 +250,6 @@ class CharacterHandler
                 player->GetPlayerbotMgr()->OnPlayerLogin(player);
                 sRandomPlayerbotMgr.OnPlayerLogin(player);
             }
-#else
-            if (WorldSession* session = sWorld.FindSessionById(sessionId))
-                session->HandlePlayerLogin((LoginQueryHolder*)holder);
 #endif
         }
 
@@ -596,6 +592,14 @@ void WorldSession::HandlePlayerLoginOpcode(WorldPacket& recv_data)
     }
 
 #ifdef ENABLE_PLAYERBOTS
+    if (pCurrChar && pCurrChar->GetPlayerbotAI() && pCurrChar->GetSession()->GetAccountId() != GetAccountId())
+    {
+        sLog.outError("HandlePlayerLoginOpcode> account %u asked for %s, a bot of another account", GetAccountId(), pCurrChar->GetGuidStr().c_str());
+        data << (uint8)CHAR_LOGIN_NO_CHARACTER;
+        SendPacket(data, true);
+        return;
+    }
+
     if (pCurrChar && pCurrChar->GetPlayerbotAI())
     {
         WorldSession* botSession = pCurrChar->GetSession();

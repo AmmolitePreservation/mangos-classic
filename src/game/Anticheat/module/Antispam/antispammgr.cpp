@@ -408,8 +408,7 @@ bool AntispamMgr::IsSilenced(const WorldSession *session) const
 void AntispamMgr::Silence(uint32 accountId) const
 {
     // ACCOUNT FLAGS
-    if (auto session = sWorld.FindSession(accountId))
-        session->AddAccountFlag(ACCOUNT_FLAG_SILENCED);
+    sWorld.ExecuteForSessionsOfAccount(accountId, [](WorldSession& session) { session.AddAccountFlag(ACCOUNT_FLAG_SILENCED); });
 
     LoginDatabase.BeginTransaction();
 
@@ -422,8 +421,7 @@ void AntispamMgr::Silence(uint32 accountId) const
 void AntispamMgr::Unsilence(uint32 accountId) const
 {
     // ACCOUNT FLAGS
-    if (auto session = sWorld.FindSession(accountId))
-        session->RemoveAccountFlag(ACCOUNT_FLAG_SILENCED);
+    sWorld.ExecuteForSessionsOfAccount(accountId, [](WorldSession& session) { session.RemoveAccountFlag(ACCOUNT_FLAG_SILENCED); });
 
     LoginDatabase.BeginTransaction();
 

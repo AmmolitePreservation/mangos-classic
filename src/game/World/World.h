@@ -534,7 +534,7 @@ class World
         void KickAllLess(AccountTypes sec);
         void WarnAccount(uint32 accountId, std::string from, std::string reason, const char* type = "WARNING");
         BanReturn BanAccount(BanMode mode, std::string nameOrIP, uint32 duration_secs, std::string reason, const std::string& author);
-        BanReturn BanAccount(WorldSession *session, uint32 duration_secs, const std::string& reason, const std::string& author);
+        BanReturn BanAccount(uint32 accountId, uint32 duration_secs, const std::string& reason, const std::string& author);
         bool RemoveBanAccount(BanMode mode, const std::string& source, const std::string& message, std::string nameOrIP);
 
         // for max speed access
@@ -593,6 +593,14 @@ class World
         {
             for (auto& data : m_sessions)
                 executor(*data.second);
+        }
+
+        template<typename T>
+        void ExecuteForSessionsOfAccount(uint32 accountId, T executor) const
+        {
+            auto const sessions = m_sessions.equal_range(accountId);
+            for (auto itr = sessions.first; itr != sessions.second; ++itr)
+                executor(*itr->second);
         }
 
         Messager<World>& GetMessager() { return m_messager; }

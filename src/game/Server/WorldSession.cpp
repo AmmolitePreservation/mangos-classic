@@ -389,7 +389,9 @@ bool WorldSession::Update(uint32 diff)
             case STATUS_LOGGEDIN_OR_RECENTLY_LOGGEDOUT:
                 if (!_player && !m_playerRecentlyLogout)
                 {
-                    LogUnexpectedOpcode(*packet, "the player has not logged in yet and not recently logout");
+                    // the stock client sends CMSG_CANCEL_TRADE at its character list
+                    if (packet->GetOpcode() != CMSG_CANCEL_TRADE)
+                        LogUnexpectedOpcode(*packet, "the player has not logged in yet and not recently logout");
                 }
                 else
                     // not expected _player or must checked in packet hanlder
@@ -615,7 +617,7 @@ void WorldSession::LogoutPlayer()
 
         sRandomPlayerbotMgr.OnPlayerLogout(_player);
 
-        sLog.outChar("Account: %d (IP: %s) Logout Character:[%s] (guid: %u)", GetAccountId(), m_socket ? GetRemoteAddress().c_str() : "bot", _player->GetName(), _player->GetGUIDLow());
+        sLog.outChar("Account: %d (IP: %s) Logout Character:[%s] (guid: %u)", GetAccountId(), m_socket ? GetRemoteAddress().c_str() : IsOffline() ? "disconnected" : "bot", _player->GetName(), _player->GetGUIDLow());
 #else
         sLog.outChar("Account: %d (IP: %s) Logout Character:[%s] (guid: %u)", GetAccountId(), GetRemoteAddress().c_str(), _player->GetName(), _player->GetGUIDLow());
 #endif
@@ -681,17 +683,22 @@ void WorldSession::LogoutPlayer()
         // No SQL injection as AccountID is uint32
         static SqlStatementID id;
 
-#ifdef BUILD_DEPRECATED_PLAYERBOT
-        if (!_player->GetPlayerbotAI())
+        bool accountHasAnotherCharacterInWorld = false;
+        sWorld.ExecuteForSessionsOfAccount(GetAccountId(), [this, &accountHasAnotherCharacterInWorld](WorldSession& session)
         {
-            // Unmodded core code below
+            if (&session != this && session.GetPlayer())
+                accountHasAnotherCharacterInWorld = true;
+        });
+
+#ifdef BUILD_DEPRECATED_PLAYERBOT
+        if (!_player->GetPlayerbotAI() && !accountHasAnotherCharacterInWorld)
+#else
+        if (!accountHasAnotherCharacterInWorld)
+#endif
+        {
             SqlStatement stmt = LoginDatabase.CreateStatement(id, "UPDATE account SET active_realm_id = ? WHERE id = ?");
             stmt.PExecute(uint32(0), GetAccountId());
         }
-#else
-        SqlStatement stmt = LoginDatabase.CreateStatement(id, "UPDATE account SET active_realm_id = ? WHERE id = ?");
-        stmt.PExecute(uint32(0), GetAccountId());
-#endif
 
         ///- If the player is in a guild, update the guild roster and broadcast a logout message to other guild members
         if (Guild* guild = sGuildMgr.GetGuildById(_player->GetGuildId()))
@@ -740,10 +747,7 @@ void WorldSession::LogoutPlayer()
         // GM ticket notification
         sTicketMgr.OnPlayerOnlineState(*_player, false);
 
-#if defined(BUILD_DEPRECATED_PLAYERBOT) || defined(ENABLE_PLAYERBOTS)
-        // Remember player GUID for update SQL below
         uint32 guid = _player->GetGUIDLow();
-#endif
 
         ///- Remove the player from the world
         // the player may not be in the world when logging out
@@ -767,22 +771,10 @@ void WorldSession::LogoutPlayer()
         WorldPacket data(SMSG_LOGOUT_COMPLETE, 0);
         SendPacket(data);
 
-        ///- Since each account can only have one online character at any given time, ensure all characters for active account are marked as offline
-        // No SQL injection as AccountId is uint32
-
         static SqlStatementID updChars;
 
-#if defined(BUILD_DEPRECATED_PLAYERBOT) || defined(ENABLE_PLAYERBOTS)
-        // Set for only character instead of account id
-        // Different characters can be alive as bots
         SqlStatement stmt2 = CharacterDatabase.CreateStatement(updChars, "UPDATE characters SET online = 0 WHERE guid = ?");
         stmt2.PExecute(guid);
-#else
-        ///- Since each account can only have one online character at any given time, ensure all characters for active account are marked as offline
-        // No SQL injection as AccountId is uint32
-        stmt = CharacterDatabase.CreateStatement(updChars, "UPDATE characters SET online = 0 WHERE account = ?");
-        stmt.PExecute(GetAccountId());
-#endif
 
         DEBUG_LOG("SESSION: Sent SMSG_LOGOUT_COMPLETE Message");
     }
@@ -1071,6 +1063,13 @@ void WorldSession::SetAccountData(AccountDataType type, time_t time_, const std:
 
     m_accountData[type].Time = time_;
     m_accountData[type].Data = data;
+
+    if ((1 << type) & GLOBAL_CACHE_MASK)
+        sWorld.ExecuteForSessionsOfAccount(GetAccountId(), [type, time_, &data](WorldSession& session)
+        {
+            session.m_accountData[type].Time = time_;
+            session.m_accountData[type].Data = data;
+        });
 }
 
 const uint8 emptyArray[16] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
@@ -1121,6 +1120,23 @@ void WorldSession::LoadTutorialsData()
     m_tutorialState = TUTORIALDATA_UNCHANGED;
 }
 
+void WorldSession::SetTutorialInt(uint32 intId, uint32 value)
+{
+    auto const store = [intId, value](WorldSession& session)
+    {
+        if (session.m_Tutorials[intId] != value)
+        {
+            session.m_Tutorials[intId] = value;
+            if (session.m_tutorialState == TUTORIALDATA_UNCHANGED)
+                session.m_tutorialState = TUTORIALDATA_CHANGED;
+        }
+    };
+
+    // a bot's session is not in the world's list
+    store(*this);
+    sWorld.ExecuteForSessionsOfAccount(GetAccountId(), store);
+}
+
 void WorldSession::SendTutorialsData()
 {
     WorldPacket data(SMSG_TUTORIAL_FLAGS, 4 * 8);
@@ -1149,7 +1165,8 @@ void WorldSession::SaveTutorialsData()
 
         case TUTORIALDATA_NEW:
         {
-            SqlStatement stmt = CharacterDatabase.CreateStatement(insTutorial, "INSERT INTO character_tutorial (account,tut0,tut1,tut2,tut3,tut4,tut5,tut6,tut7) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            // another session of the account may have made the row since this one loaded
+            SqlStatement stmt = CharacterDatabase.CreateStatement(insTutorial, "REPLACE INTO character_tutorial (account,tut0,tut1,tut2,tut3,tut4,tut5,tut6,tut7) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
             stmt.addUInt32(GetAccountId());
             for (unsigned int m_Tutorial : m_Tutorials)

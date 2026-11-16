@@ -1908,16 +1908,16 @@ void World::WarnAccount(uint32 accountId, std::string from, std::string reason, 
         accountId, from.c_str(), reason.c_str());
 }
 
-BanReturn World::BanAccount(WorldSession *session, uint32 duration_secs, const std::string& reason, const std::string& author)
+BanReturn World::BanAccount(uint32 accountId, uint32 duration_secs, const std::string& reason, const std::string& author)
 {
     if (duration_secs)
         LoginDatabase.PExecute("INSERT INTO account_banned(account_id, banned_at, expires_at, banned_by, reason, active) VALUES ('%u', " _UNIXTIME_ ", " _UNIXTIME_ "+%u, '%s', '%s', '1')",
-            session->GetAccountId(), duration_secs, author.c_str(), reason.c_str());
+            accountId, duration_secs, author.c_str(), reason.c_str());
     else
         LoginDatabase.PExecute("INSERT INTO account_banned(account_id, banned_at, expires_at, banned_by, reason, active) VALUES ('%u',  " _UNIXTIME_ ", 0, '%s', '%s', '1')",
-            session->GetAccountId(), author.c_str(), reason.c_str());
+            accountId, author.c_str(), reason.c_str());
 
-    session->KickPlayer();
+    ExecuteForSessionsOfAccount(accountId, [](WorldSession& session) { session.KickPlayer(); });
     return BAN_SUCCESS;
 }
 

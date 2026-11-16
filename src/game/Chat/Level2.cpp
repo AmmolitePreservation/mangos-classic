@@ -96,13 +96,14 @@ bool ChatHandler::HandleMuteCommand(char* args)
 
     time_t mutetime = time(nullptr) + mutedMinutes * 60;
 
-    if (target)
-        target->GetSession()->m_muteTime = mutetime;
-
     LoginDatabase.PExecute("UPDATE account SET mutetime = " UI64FMTD " WHERE id = '%u'", uint64(mutetime), account_id);
 
-    if (target)
-        ChatHandler(target).PSendSysMessage(LANG_YOUR_CHAT_DISABLED, mutedMinutes);
+    sWorld.ExecuteForSessionsOfAccount(account_id, [mutetime, mutedMinutes](WorldSession& session)
+    {
+        session.m_muteTime = mutetime;
+        if (Player* player = session.GetPlayer())
+            ChatHandler(player).PSendSysMessage(LANG_YOUR_CHAT_DISABLED, mutedMinutes);
+    });
 
     std::string nameLink = playerLink(target_name);
 
@@ -152,13 +153,16 @@ bool ChatHandler::HandleUnmuteCommand(char* args)
             return false;
         }
 
-        target->GetSession()->m_muteTime = 0;
     }
 
     LoginDatabase.PExecute("UPDATE account SET mutetime = '0' WHERE id = '%u'", account_id);
 
-    if (target)
-        ChatHandler(target).PSendSysMessage(LANG_YOUR_CHAT_ENABLED);
+    sWorld.ExecuteForSessionsOfAccount(account_id, [](WorldSession& session)
+    {
+        session.m_muteTime = 0;
+        if (Player* player = session.GetPlayer())
+            ChatHandler(player).PSendSysMessage(LANG_YOUR_CHAT_ENABLED);
+    });
 
     std::string nameLink = playerLink(target_name);
 
@@ -4351,9 +4355,13 @@ bool ChatHandler::ShowAccountListHelper(std::unique_ptr<QueryResult> queryResult
         Field* fields = queryResult->Fetch();
         uint32 account = fields[0].GetUInt32();
 
-        WorldSession* session = sWorld.FindSession(account);
-        Player* player = session ? session->GetPlayer() : nullptr;
-        char const* char_name = player ? player->GetName() : "[OFFLINE]";
+        std::string characterNames;
+        sWorld.ExecuteForSessionsOfAccount(account, [&characterNames](WorldSession& session)
+        {
+            if (Player* player = session.GetPlayer())
+                characterNames += (characterNames.empty() ? "" : " ") + std::string(player->GetName());
+        });
+        char const* char_name = characterNames.empty() ? "[OFFLINE]" : characterNames.c_str();
 
         if (m_session)
             PSendSysMessage(LANG_ACCOUNT_LIST_LINE_CHAT,
