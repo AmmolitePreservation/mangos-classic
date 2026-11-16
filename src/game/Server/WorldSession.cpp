@@ -1301,11 +1301,6 @@ void WorldSession::InitializeAnticheat(const BigNumber& K)
     m_anticheat = sAnticheatLib->NewSession(this, K);
 }
 
-void WorldSession::AssignAnticheat(std::unique_ptr<SessionAnticheatInterface>&& anticheat)
-{
-    m_anticheat = std::move(anticheat);
-}
-
 void WorldSession::AfkStateChange(bool state)
 {
     if (state)
