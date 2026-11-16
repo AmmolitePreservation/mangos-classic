@@ -262,10 +262,10 @@ void WorldSession::HandleCharEnum(QueryResult* result)
     {
         do
         {
-            // the client rejects the whole list beyond 10 characters
-            if (num == 10)
+            // the list's count is one byte; the stock client's own limit of 10 is lifted by the login plugin
+            if (num == 255)
             {
-                sLog.outError("Account %u has more than 10 characters, only the first 10 are listed.", GetAccountId());
+                sLog.outError("Account %u has more than 255 characters, only the first 255 are listed.", GetAccountId());
                 break;
             }
 
