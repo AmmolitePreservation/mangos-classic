@@ -355,7 +355,9 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
     }
 
     // Get the account information from the realmd database
-    std::string safe_account = account; // Duplicate, else will screw the SHA hash verification below
+    // A login key's name is the account name, '#' and the key's ID; the SHA hash below takes the whole name
+    const std::string accountName = account.substr(0, account.find('#'));
+    std::string safe_account = accountName;
     LoginDatabase.escape_string(safe_account);
     // No SQL injection, username escaped.
 
@@ -535,7 +537,7 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
         return false;
     }
 
-    if (!(m_session = new WorldSession(id, this, AccountTypes(security), mutetime, locale, account, accountFlags)))
+    if (!(m_session = new WorldSession(id, this, AccountTypes(security), mutetime, locale, accountName, accountFlags)))
         return false;
 
     m_session->LoadGlobalAccountData();

@@ -66,7 +66,8 @@ enum SecurityFlags
 #pragma pack(push,1)
 #endif
 
-# define AUTH_LOGON_MAX_NAME 32
+// An account name of up to 32 letters, or a login key's name: the account name, '#' and the key's ID
+# define AUTH_LOGON_MAX_NAME 40
 
 struct sAuthLogonChallengeBody
 {
@@ -189,6 +190,13 @@ typedef struct AuthHandler
 std::array<uint8, 16> VersionChallenge = { { 0xBA, 0xA3, 0x1E, 0x99, 0xA0, 0x0B, 0x21, 0x57, 0xFC, 0x37, 0x3F, 0xB3, 0x69, 0xCD, 0xD2, 0xF1 } };
 
 static const std::vector<uint8>& GetFakeAccountSecret();   // defined with BuildLogonChallengeSuccess, used by _HandleLogonChallenge
+
+// A login key's name is the account name, '#' and the key's ID: the client logs in under that whole name (its SRP
+// proofs and its world session hash it), and the account is the part before the '#'.
+static std::string AccountNameOf(const std::string& login)
+{
+    return login.substr(0, login.find('#'));
+}
 static std::vector<uint8> ExpandFakeSecret(const std::vector<uint8>& secret, const std::string& login, const char* tag, bool matchSaltShape);
 const char logonProofUnknownAccount[4] = { CMD_AUTH_LOGON_PROOF, AUTH_LOGON_FAILED_UNKNOWN_ACCOUNT, 0, 0 };
 const char logonProofUnknownAccountVanilla[2] = { CMD_AUTH_LOGON_PROOF, AUTH_LOGON_FAILED_UNKNOWN_ACCOUNT };
@@ -415,8 +423,11 @@ bool AuthSocket::_HandleLogonChallenge()
 
             // Escape the user input used in DB to avoid further SQL injection
             // Memory will be freed on AuthSocket object destruction
-            self->_safelogin = self->_login;
+            self->_safelogin = AccountNameOf(self->_login);
             LoginDatabase.escape_string(self->_safelogin);
+            std::string safeKeyName = self->_login;
+            LoginDatabase.escape_string(safeKeyName);
+            const bool isKeyed = self->_login.find('#') != std::string::npos;
             self->_safelocale = self->m_locale;
             LoginDatabase.escape_string(self->_safelocale);
             LoginDatabase.escape_string(self->m_os);
@@ -426,11 +437,18 @@ bool AuthSocket::_HandleLogonChallenge()
 
             ///- Get the account details and its ban state in one query (a round trip to the database costs far more than a few extra columns)
             // No SQL injection (escaped user name, IP address as passed by the socket)
-            auto queryResult = LoginDatabase.PQuery("SELECT a.id,a.locked,a.lockedIp,a.gmlevel,a.v,a.s,a.token,"
+            // A login key (Ammolite's, written to login_key for one login) stands in for the account's own v and s
+            const std::string keyJoin = isKeyed ? "JOIN login_key k ON k.account_id = a.id AND k.login_name = '" + safeKeyName +
+                "' AND k.expires_at > " _UNIXTIME_ " " : "";
+            auto queryResult = LoginDatabase.PQuery("SELECT a.id,a.locked,a.lockedIp,a.gmlevel,%s,a.token,"
                 "(SELECT COUNT(*) FROM ip_banned WHERE (expires_at = banned_at OR expires_at > " _UNIXTIME_ ") AND ip = '%s'),"
                 "(SELECT COUNT(*) FROM account_banned WHERE account_id = a.id AND active = 1 AND expires_at = banned_at),"
                 "(SELECT COUNT(*) FROM account_banned WHERE account_id = a.id AND active = 1 AND expires_at <> banned_at AND expires_at > " _UNIXTIME_ ") "
-                "FROM account a WHERE a.username = '%s'", self->GetRemoteAddress().c_str(), self->_safelogin.c_str());
+                "FROM account a %sWHERE a.username = '%s'", isKeyed ? "k.v,k.s" : "a.v,a.s", self->GetRemoteAddress().c_str(),
+                keyJoin.c_str(), self->_safelogin.c_str());
+            // A key is good for one logon challenge
+            if (isKeyed)
+                LoginDatabase.PExecute("DELETE FROM login_key WHERE login_name = '%s' OR expires_at <= " _UNIXTIME_, safeKeyName.c_str());
 
             ///- Verify that this IP is not in the ip_banned table
             bool ipBanned;
@@ -719,7 +737,7 @@ bool AuthSocket::_HandleReconnectChallenge()
 
             self->_login = (const char*)body->userName;
 
-            self->_safelogin = self->_login;
+            self->_safelogin = AccountNameOf(self->_login);
             LoginDatabase.escape_string(self->_safelogin);
 
             EndianConvert(body->build);
