@@ -838,6 +838,10 @@ class WorldSession
         bool m_playerSave;                                  // should we have to save the player after logout request
         bool m_inQueue;                                     // session wait in auth.queue
         bool m_playerLoading;                               // code processed in LoginPlayer
+#ifdef ENABLE_PLAYERBOTS
+        // The master of the bot this session's player was before the player took it over; empty otherwise.
+        ObjectGuid m_formerBotMaster;
+#endif
         bool m_kickSession;
 
         // True when the player is in the process of logging out (WorldSession::LogoutPlayer is currently executing)

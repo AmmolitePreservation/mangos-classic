@@ -738,6 +738,17 @@ void WorldSession::LogoutPlayer()
         stmt2.PExecute(guid);
 
         DEBUG_LOG("SESSION: Sent SMSG_LOGOUT_COMPLETE Message");
+
+#ifdef ENABLE_PLAYERBOTS
+        // a bot this session took over is its master's bot again, when that master is still in the world
+        if (!m_formerBotMaster.IsEmpty())
+        {
+            Player* formerMaster = ObjectAccessor::FindPlayer(m_formerBotMaster);
+            if (formerMaster && formerMaster->GetPlayerbotMgr())
+                formerMaster->GetPlayerbotMgr()->AddPlayerBot(guid, formerMaster->GetSession()->GetAccountId());
+            m_formerBotMaster.Clear();
+        }
+#endif
     }
 
     m_playerLogout = false;

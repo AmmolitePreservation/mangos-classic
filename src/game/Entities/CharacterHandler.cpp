@@ -575,32 +575,38 @@ void WorldSession::HandlePlayerLoginOpcode(WorldPacket& recv_data)
         return;
     }
 
+    // A player logging in to a character that is a bot takes it over as a character, not as a bot: it leaves the bots
+    // of whoever held it and loses its AI before this session has it, and its bot session goes. At logout it is that
+    // master's bot again (LogoutPlayer).
     if (pCurrChar && pCurrChar->GetPlayerbotAI())
     {
         WorldSession* botSession = pCurrChar->GetSession();
+        const uint32 botGuid = pCurrChar->GetGUIDLow();
+        Player* botMaster = pCurrChar->GetPlayerbotAI()->GetMaster();
+        m_formerBotMaster = botMaster && botMaster != pCurrChar ? botMaster->GetObjectGuid() : ObjectGuid();
+
+        if (botMaster && botMaster->GetPlayerbotMgr() && botMaster->GetPlayerbotMgr()->GetPlayerBot(botGuid))
+            botMaster->GetPlayerbotMgr()->DisablePlayerBot(botGuid, false);
+        else if (sRandomPlayerbotMgr.GetPlayerBot(botGuid))
+            sRandomPlayerbotMgr.DisablePlayerBot(botGuid, false);
+        if (pCurrChar->GetPlayerbotAI())
+            pCurrChar->RemovePlayerbotAI();
+
         SetPlayer(pCurrChar, playerGuid);
         _player->SetSession(this);
         _logoutTime = time(0);
 
         m_sessionDbcLocale = botSession->m_sessionDbcLocale;
         m_sessionDbLocaleIndex = botSession->m_sessionDbLocaleIndex;
-
-        PlayerbotMgr* mgr = _player->GetPlayerbotMgr();
-        if (!mgr || mgr->GetMaster() != _player)
+        if (botSession != this)
         {
-            _player->RemovePlayerbotMgr();
-            _player->CreatePlayerbotMgr();
-            _player->GetPlayerbotMgr()->OnPlayerLogin(_player);
-
-            if (sRandomPlayerbotMgr.GetPlayerBot(playerGuid))
-            {
-                sRandomPlayerbotMgr.MovePlayerBot(playerGuid, _player->GetPlayerbotMgr());
-            }
-            else
-            {
-                _player->GetPlayerbotMgr()->OnBotLogin(_player);
-            }
+            botSession->SetPlayer(nullptr, ObjectGuid());
+            delete botSession;
         }
+
+        _player->RemovePlayerbotMgr();
+        _player->CreatePlayerbotMgr();
+        _player->GetPlayerbotMgr()->OnPlayerLogin(_player);
     }
 #endif
 
